@@ -1,0 +1,98 @@
+name: Terraform CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.4
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+
+  modules:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.4
+
+      - name: Validate modules and run contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t module_dirs < <(find modules -mindepth 2 -maxdepth 2 -type f -name 'versions.tf' -printf '%h\n' | sort -u)
+
+          if [ "${#module_dirs[@]}" -eq 0 ]; then
+            echo "No Terraform modules found."
+            exit 0
+          fi
+
+          for module_dir in "${module_dirs[@]}"; do
+            echo "::group::${module_dir}"
+            (
+              cd "${module_dir}"
+              terraform init -backend=false
+              terraform validate
+
+              if find tests -type f -name '*.tftest.hcl' | grep -q .; then
+                terraform test
+              else
+                echo "No terraform test files in ${module_dir}"
+              fi
+            )
+            echo "::endgroup::"
+          done
+
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.4
+
+      - name: Validate examples
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t example_dirs < <(find examples -mindepth 2 -maxdepth 2 -type f -name 'main.tf' -printf '%h\n' | sort -u)
+
+          if [ "${#example_dirs[@]}" -eq 0 ]; then
+            echo "No Terraform examples found."
+            exit 0
+          fi
+
+          for example_dir in "${example_dirs[@]}"; do
+            echo "::group::${example_dir}"
+            (
+              cd "${example_dir}"
+              terraform init -backend=false
+              terraform validate
+            )
+            echo "::endgroup::"
+          done

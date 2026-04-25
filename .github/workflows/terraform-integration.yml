@@ -1,0 +1,27 @@
+name: Terraform Integration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Discover integration suites
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if find tests -type f \( -name 'run.sh' -o -name '*.go' \) | grep -q .; then
+            echo "Integration suites detected."
+          else
+            echo "No executable integration suites are defined yet."
+          fi
