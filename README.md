@@ -4,7 +4,7 @@ Reusable Terraform modules for shared infrastructure patterns.
 
 The repository branch is `main`. Modules should be consumed via version tags rather than by floating branch references.
 
-Documentation should normally use the moving two-level tag form such as `v0.2`; patch tags such as `v0.2.0` remain the immutable release points.
+Documentation should normally use the moving two-level tag form such as `v0.3`; patch tags such as `v0.3.0` remain the immutable release points.
 
 ## Layout
 
@@ -16,6 +16,7 @@ Documentation should normally use the moving two-level tag form such as `v0.2`; 
 
 - `modules/aws/deployment_bucket`
 - `modules/aws/dynamodb`
+- `modules/aws/mail`
 
 ## Testing approach
 

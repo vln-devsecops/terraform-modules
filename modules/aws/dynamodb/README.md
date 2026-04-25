@@ -29,7 +29,7 @@ Creates a DynamoDB table with optional secondary indexes and optional IAM user p
 
 ```hcl
 module "dynamodb" {
-  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/dynamodb?ref=v0.2"
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/dynamodb?ref=v0.3"
 
   app_name               = "myapp"
   deployment_environment = "dev"
@@ -45,4 +45,4 @@ module "dynamodb" {
 }
 ```
 
-The repository branch should remain `main`, while module consumers should normally prefer the moving two-level tag form such as `v0.2`.
+The repository branch should remain `main`, while module consumers should normally prefer the moving two-level tag form such as `v0.3`.
