@@ -22,7 +22,7 @@ Creates a versioned S3 bucket for deployment artifacts with public access blocke
 
 ```hcl
 module "deployment_bucket" {
-  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/deployment_bucket?ref=v0.1.0"
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/deployment_bucket?ref=v0.1"
 
   app_name               = "myapp"
   deployment_environment = "dev"
@@ -30,4 +30,4 @@ module "deployment_bucket" {
 }
 ```
 
-The repository branch should remain `main`, while module consumers should prefer version tags such as `v0.1.0`.
+The repository branch should remain `main`, while module consumers should normally prefer the moving two-level tag form such as `v0.1`.
