@@ -1,0 +1,28 @@
+---
+version: 2
+updates:
+  - package-ecosystem: terraform
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - terraform
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - github-actions
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
