@@ -4,7 +4,7 @@ Reusable Terraform modules for shared infrastructure patterns.
 
 The repository branch is `main`. Modules should be consumed via version tags rather than by floating branch references.
 
-Documentation should normally use the moving two-level tag form such as `v0.1`; patch tags such as `v0.1.0` remain the immutable release points.
+Documentation should normally use the moving two-level tag form such as `v0.2`; patch tags such as `v0.2.0` remain the immutable release points.
 
 ## Layout
 
@@ -15,3 +15,15 @@ Documentation should normally use the moving two-level tag form such as `v0.1`; 
 ## Current modules
 
 - `modules/aws/deployment_bucket`
+- `modules/aws/dynamodb`
+
+## Testing approach
+
+Shared modules use a layered test model:
+
+1. static checks on every change with `terraform fmt -check` and `terraform validate`
+2. module contract tests with `terraform test`
+3. executable examples under `examples/`
+4. higher-level cloud integration coverage under `tests/`, added separately when the module is ready for real provider-backed verification
+
+At the moment, `deployment_bucket` and `dynamodb` have static checks, contract tests, and executable examples in place. Their higher-level AWS integration coverage is still deferred.
