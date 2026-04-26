@@ -15,21 +15,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.11.4
 
       - name: Check formatting
-        run: terraform fmt -check -recursive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          terraform fmt -check -recursive
+
+          {
+            echo "## Terraform formatting"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| \`terraform fmt -check -recursive\` | pass |"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
   coverage:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Verify module test and example coverage
         shell: bash
@@ -43,34 +55,64 @@ jobs:
             exit 1
           fi
 
+          summary_file="$(mktemp)"
+          {
+            echo "## Terraform coverage"
+            echo
+            echo "| Module | Contract tests | Assertions | Example |"
+            echo "| --- | --- | --- | --- |"
+          } > "${summary_file}"
+
           for module_dir in "${module_dirs[@]}"; do
             test_dir="${module_dir}/tests"
             example_dir="examples/${module_dir#modules/}"
 
+            has_tests="yes"
+            has_assertions="yes"
+            has_example="yes"
+
             if [ ! -d "${test_dir}" ] || ! find "${test_dir}" -type f -name '*.tftest.hcl' | grep -q .; then
+              has_tests="no"
+              printf '| `%s` | %s | %s | %s |\n' "${module_dir}" "${has_tests}" "${has_assertions}" "${has_example}" >> "${summary_file}"
+              cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
               echo "Missing terraform test files for ${module_dir}"
               exit 1
             fi
 
             if ! grep -R -E '^[[:space:]]*assert[[:space:]]*\{' "${test_dir}" --include='*.tftest.hcl' >/dev/null; then
+              has_assertions="no"
+              printf '| `%s` | %s | %s | %s |\n' "${module_dir}" "${has_tests}" "${has_assertions}" "${has_example}" >> "${summary_file}"
+              cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
               echo "Terraform tests for ${module_dir} do not contain any assertions."
               exit 1
             fi
 
             if [ ! -f "${example_dir}/main.tf" ]; then
+              has_example="no"
+              printf '| `%s` | %s | %s | %s |\n' "${module_dir}" "${has_tests}" "${has_assertions}" "${has_example}" >> "${summary_file}"
+              cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
               echo "Missing matching example for ${module_dir}: expected ${example_dir}/main.tf"
               exit 1
             fi
+
+            printf '| `%s` | %s | %s | %s |\n' "${module_dir}" "${has_tests}" "${has_assertions}" "${has_example}" >> "${summary_file}"
           done
+
+          {
+            echo
+            printf '**Coverage result:** %s/%s modules have contract tests with assertions and a matching example.\n' "${#module_dirs[@]}" "${#module_dirs[@]}"
+          } >> "${summary_file}"
+
+          cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
 
   modules:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.11.4
 
@@ -86,6 +128,14 @@ jobs:
             exit 1
           fi
 
+          summary_file="$(mktemp)"
+          {
+            echo "## Terraform module validation and tests"
+            echo
+            echo "| Module | Validate | Contract tests |"
+            echo "| --- | --- | --- |"
+          } > "${summary_file}"
+
           for module_dir in "${module_dirs[@]}"; do
             echo "::group::${module_dir}"
             (
@@ -96,16 +146,25 @@ jobs:
               terraform test
             )
             echo "::endgroup::"
+
+            printf '| `%s` | pass | pass |\n' "${module_dir}" >> "${summary_file}"
           done
+
+          {
+            echo
+            printf '**Module result:** validated %s modules and ran %s contract test suites.\n' "${#module_dirs[@]}" "${#module_dirs[@]}"
+          } >> "${summary_file}"
+
+          cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
 
   examples:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.11.4
 
@@ -121,6 +180,14 @@ jobs:
             exit 1
           fi
 
+          summary_file="$(mktemp)"
+          {
+            echo "## Terraform example validation"
+            echo
+            echo "| Example | Validate |"
+            echo "| --- | --- |"
+          } > "${summary_file}"
+
           for example_dir in "${example_dirs[@]}"; do
             echo "::group::${example_dir}"
             (
@@ -129,4 +196,13 @@ jobs:
               terraform validate
             )
             echo "::endgroup::"
+
+            printf '| `%s` | pass |\n' "${example_dir}" >> "${summary_file}"
           done
+
+          {
+            echo
+            printf '**Example result:** validated %s runnable examples.\n' "${#example_dirs[@]}"
+          } >> "${summary_file}"
+
+          cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
