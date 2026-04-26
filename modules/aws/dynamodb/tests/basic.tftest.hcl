@@ -1,3 +1,7 @@
+mock_provider "aws" {
+  override_during = plan
+}
+
 run "table_name_and_tags_match_contract" {
   command = plan
 

@@ -1,3 +1,7 @@
+mock_provider "aws" {
+  override_during = plan
+}
+
 run "bucket_name_and_outputs_match_contract" {
   command = plan
 

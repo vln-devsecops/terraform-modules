@@ -1,3 +1,7 @@
+mock_provider "aws" {
+  override_during = plan
+}
+
 run "mail_contract_uses_expected_defaults" {
   command = plan
 
