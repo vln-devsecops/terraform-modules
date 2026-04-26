@@ -17,6 +17,7 @@ Documentation should normally use the moving two-level tag form such as `v0.3`; 
 - `modules/aws/deployment_bucket`
 - `modules/aws/dynamodb`
 - `modules/aws/mail`
+- `modules/aws/lambda`
 
 ## Testing approach
 
@@ -28,3 +29,5 @@ Shared modules use a layered test model:
 4. higher-level cloud integration coverage under `tests/`, added separately when the module is ready for real provider-backed verification
 
 At the moment, `deployment_bucket` and `dynamodb` have static checks, contract tests, and executable examples in place. Their higher-level AWS integration coverage is still deferred.
+
+`lambda` now adds both mock-provider contract coverage and a provider-backed compatibility fixture under `tests/aws/lambda/docxchange_compat` so the closest-to-production `docxchange` usage shape stays protected while the shared module evolves.

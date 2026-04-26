@@ -1,0 +1,206 @@
+locals {
+  effective_source_object_key = coalesce(var.source_object_key, "${var.app_name}-${var.function_name}.zip")
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = var.assume_role_services
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+  common_tags = {
+    app         = var.app_name
+    environment = var.deployment_environment
+    function    = var.function_name
+  }
+}
+
+resource "aws_iam_role" "this" {
+  name               = "iam_for_lambda_${var.function_name}_${var.deployment_environment}"
+  assume_role_policy = local.assume_role_policy
+  tags               = merge(local.common_tags, { rg = "security" })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_logging" {
+  role       = aws_iam_role.this.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_policy" "deployment_source_access" {
+  name        = "${var.app_name}_${var.function_name}_${var.deployment_environment}_lambda_deployment_s3_source_access_policy"
+  description = "Allows Lambda function to read its deployment archive from S3"
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = [
+          "s3:GetObject"
+        ],
+        Effect   = "Allow",
+        Resource = "${var.source_bucket_arn}/${local.effective_source_object_key}"
+      }
+    ]
+  })
+  tags = merge(local.common_tags, { rg = "security" })
+}
+
+resource "aws_iam_role_policy_attachment" "deployment_source_access" {
+  role       = aws_iam_role.this.name
+  policy_arn = aws_iam_policy.deployment_source_access.arn
+}
+
+data "aws_s3_object" "source_archive" {
+  bucket = var.source_bucket_id
+  key    = local.effective_source_object_key
+}
+
+resource "aws_iam_policy" "s3_required_access" {
+  for_each = var.s3_required_access
+
+  name = "lambda_s3_read_${var.app_name}_${var.function_name}_${var.deployment_environment}-${each.key}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          each.value.action
+        ]
+        Resource = each.value.resources
+      }
+    ]
+  })
+  tags = merge(local.common_tags, { rg = "security" })
+}
+
+resource "aws_iam_role_policy_attachment" "s3_required_access" {
+  for_each = var.s3_required_access
+
+  role       = aws_iam_role.this.name
+  policy_arn = aws_iam_policy.s3_required_access[each.key].arn
+}
+
+resource "aws_iam_role_policy_attachment" "additional" {
+  count = length(var.additional_role_policy_arns)
+
+  role       = aws_iam_role.this.name
+  policy_arn = var.additional_role_policy_arns[count.index]
+}
+
+resource "aws_lambda_function" "this" {
+  function_name = "${var.app_name}-${var.function_name}-${var.deployment_environment}"
+  role          = aws_iam_role.this.arn
+  handler       = var.handler_name
+  runtime       = var.runtime
+  timeout       = var.timeout
+  memory_size   = var.memory_size
+  publish       = var.publish
+
+  s3_bucket         = var.source_bucket_id
+  s3_key            = local.effective_source_object_key
+  source_code_hash  = data.aws_s3_object.source_archive.checksum_sha256
+  s3_object_version = data.aws_s3_object.source_archive.version_id
+
+  environment {
+    variables = var.environment
+  }
+
+  tags = merge(local.common_tags, { rg = "compute" })
+
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_logging,
+    aws_iam_role_policy_attachment.deployment_source_access,
+  ]
+}
+
+resource "aws_secretsmanager_secret" "this" {
+  count = var.create_secret ? 1 : 0
+
+  name        = "${var.app_name}-${var.function_name}-${var.deployment_environment}-secrets"
+  description = "Secrets for ${var.function_name} Lambda function in ${var.deployment_environment} environment"
+  tags        = merge(local.common_tags, { purpose = "lambda-secrets", rg = "security" })
+}
+
+resource "aws_secretsmanager_secret_version" "this" {
+  count = var.create_secret ? 1 : 0
+
+  secret_id = aws_secretsmanager_secret.this[0].id
+  secret_string = jsonencode({
+    placeholder = "to-be-updated-by-script"
+  })
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
+resource "aws_iam_policy" "lambda_secrets_access" {
+  count = var.create_secret ? 1 : 0
+
+  name        = "${var.app_name}-${var.function_name}-${var.deployment_environment}-secrets-policy"
+  description = "Allow ${var.function_name} Lambda to read its secrets from Secrets Manager"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          aws_secretsmanager_secret.this[0].arn
+        ]
+      }
+    ]
+  })
+  tags = merge(local.common_tags, { rg = "security" })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_secrets_access" {
+  count = var.create_secret ? 1 : 0
+
+  role       = aws_iam_role.this.name
+  policy_arn = aws_iam_policy.lambda_secrets_access[0].arn
+}
+
+resource "aws_iam_policy" "backend_user_secrets_access" {
+  count = var.create_secret && var.backend_user_name != null ? 1 : 0
+
+  name        = "${var.app_name}-${var.function_name}-${var.deployment_environment}-backend-secrets-policy"
+  description = "Allow backend user to manage ${var.function_name} Lambda secrets"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:UpdateSecret",
+          "secretsmanager:PutSecretValue"
+        ]
+        Resource = [
+          aws_secretsmanager_secret.this[0].arn
+        ]
+      }
+    ]
+  })
+  tags = merge(local.common_tags, { rg = "security" })
+}
+
+resource "aws_iam_user_policy_attachment" "backend_user_secrets_access" {
+  count = var.create_secret && var.backend_user_name != null ? 1 : 0
+
+  user       = var.backend_user_name
+  policy_arn = aws_iam_policy.backend_user_secrets_access[0].arn
+}
+
+resource "aws_lambda_function_url" "this" {
+  count = var.create_url ? 1 : 0
+
+  function_name      = aws_lambda_function.this.function_name
+  authorization_type = var.url_authorization_type
+}
