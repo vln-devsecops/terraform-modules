@@ -25,6 +25,44 @@ jobs:
       - name: Check formatting
         run: terraform fmt -check -recursive
 
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify module test and example coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t module_dirs < <(find modules -type f -name 'versions.tf' -not -path '*/.terraform/*' -printf '%h\n' | sort -u)
+
+          if [ "${#module_dirs[@]}" -eq 0 ]; then
+            echo "No Terraform modules found."
+            exit 1
+          fi
+
+          for module_dir in "${module_dirs[@]}"; do
+            test_dir="${module_dir}/tests"
+            example_dir="examples/${module_dir#modules/}"
+
+            if [ ! -d "${test_dir}" ] || ! find "${test_dir}" -type f -name '*.tftest.hcl' | grep -q .; then
+              echo "Missing terraform test files for ${module_dir}"
+              exit 1
+            fi
+
+            if ! grep -R -E '^[[:space:]]*assert[[:space:]]*\{' "${test_dir}" --include='*.tftest.hcl' >/dev/null; then
+              echo "Terraform tests for ${module_dir} do not contain any assertions."
+              exit 1
+            fi
+
+            if [ ! -f "${example_dir}/main.tf" ]; then
+              echo "Missing matching example for ${module_dir}: expected ${example_dir}/main.tf"
+              exit 1
+            fi
+          done
+
   modules:
     runs-on: ubuntu-latest
     steps:
@@ -41,11 +79,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t module_dirs < <(find modules -mindepth 2 -maxdepth 2 -type f -name 'versions.tf' -printf '%h\n' | sort -u)
+          mapfile -t module_dirs < <(find modules -type f -name 'versions.tf' -not -path '*/.terraform/*' -printf '%h\n' | sort -u)
 
           if [ "${#module_dirs[@]}" -eq 0 ]; then
             echo "No Terraform modules found."
-            exit 0
+            exit 1
           fi
 
           for module_dir in "${module_dirs[@]}"; do
@@ -55,11 +93,7 @@ jobs:
               terraform init -backend=false
               terraform validate
 
-              if find tests -type f -name '*.tftest.hcl' | grep -q .; then
-                terraform test
-              else
-                echo "No terraform test files in ${module_dir}"
-              fi
+              terraform test
             )
             echo "::endgroup::"
           done
@@ -80,11 +114,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t example_dirs < <(find examples -mindepth 2 -maxdepth 2 -type f -name 'main.tf' -printf '%h\n' | sort -u)
+          mapfile -t example_dirs < <(find examples -type f -name 'main.tf' -not -path '*/.terraform/*' -printf '%h\n' | sort -u)
 
           if [ "${#example_dirs[@]}" -eq 0 ]; then
             echo "No Terraform examples found."
-            exit 0
+            exit 1
           fi
 
           for example_dir in "${example_dirs[@]}"; do

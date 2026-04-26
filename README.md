@@ -28,6 +28,8 @@ Shared modules use a layered test model:
 3. executable examples under `examples/`
 4. higher-level cloud integration coverage under `tests/`, added separately when the module is ready for real provider-backed verification
 
+The repository CI also enforces that every discovered module has both contract tests with real assertions and a matching example directory, so a green workflow means the module tree was actually discovered and exercised.
+
 At the moment, `deployment_bucket` and `dynamodb` have static checks, contract tests, and executable examples in place. Their higher-level AWS integration coverage is still deferred.
 
 `lambda` now adds both mock-provider contract coverage and a provider-backed compatibility fixture under `tests/aws/lambda/docxchange_compat` so the closest-to-production `docxchange` usage shape stays protected while the shared module evolves.
