@@ -2,7 +2,72 @@
 version: 2
 updates:
   - package-ecosystem: terraform
-    directory: /
+    directory: /modules/aws/deployment_bucket
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - terraform
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: terraform
+    directory: /modules/aws/dynamodb
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - terraform
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: terraform
+    directory: /modules/aws/mail
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - terraform
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: terraform
+    directory: /examples/aws/deployment_bucket
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - terraform
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: terraform
+    directory: /examples/aws/dynamodb
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - terraform
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: terraform
+    directory: /examples/aws/mail
     target-branch: main
     schedule:
       interval: weekly
