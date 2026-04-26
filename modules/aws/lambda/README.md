@@ -66,4 +66,4 @@ module "lambda" {
 }
 ```
 
-The repository branch should remain `main`, while module consumers should normally prefer the moving two-level tag form such as `v0.4`.
+The repository branch should remain `main`, while module consumers should normally prefer the moving two-level tag form such as `v0.4`. That moving tag should only advance after the relevant pipelines have passed on the target commit.

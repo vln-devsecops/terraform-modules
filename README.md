@@ -6,6 +6,8 @@ The repository branch is `main`. Modules should be consumed via version tags rat
 
 Documentation should normally use the moving two-level tag form such as `v0.3`; patch tags such as `v0.3.0` remain the immutable release points.
 
+Version tags should only be created or moved after the relevant pipelines have been confirmed to pass on the tagged commit.
+
 ## Layout
 
 - `modules/aws/*`: AWS-specific shared modules
