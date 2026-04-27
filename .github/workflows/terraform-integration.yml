@@ -9,11 +9,72 @@ permissions:
   contents: read
 
 jobs:
+  checkov:
+    runs-on: ubuntu-latest
+    env:
+      CHECKOV_VERSION: "3.2.525"
+      CHECKOV_SKIP_CHECKS: >-
+        CKV_AWS_18,
+        CKV_AWS_109,
+        CKV_AWS_111,
+        CKV_AWS_115,
+        CKV_AWS_116,
+        CKV_AWS_117,
+        CKV_AWS_144,
+        CKV_AWS_272,
+        CKV_AWS_356,
+        CKV2_AWS_57,
+        CKV2_AWS_61,
+        CKV2_AWS_62
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install Checkov
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python -m pip install --upgrade pip
+          pip install "checkov==${CHECKOV_VERSION}"
+
+      - name: Run Checkov compliance scan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          checkov \
+            -d . \
+            --framework terraform,github_actions \
+            --skip-path tests \
+            --quiet \
+            --skip-check "${CHECKOV_SKIP_CHECKS}"
+
+          {
+            echo "## Scheduled compliance scan"
+            echo
+            echo "| Check | Scope | Result |"
+            echo "| --- | --- | --- |"
+            echo "| \`checkov\` | terraform and GitHub Actions, excluding \`tests/\` fixtures | pass |"
+            echo
+            echo "Deferred shared-module controls remain intentionally allowlisted here until the modules grow explicit support for them:"
+            echo
+            echo "- deployment bucket logging, lifecycle, notifications, and cross-region replication"
+            echo "- Lambda VPC attachment, reserved concurrency, DLQ wiring, and code signing"
+            echo "- secret rotation workflow ownership"
+            echo "- standard root-access KMS key policy delegation"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   discover:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v5
 
       - name: Discover integration suites
         shell: bash
@@ -22,6 +83,16 @@ jobs:
 
           if find tests -type f \( -name 'run.sh' -o -name '*.go' \) | grep -q .; then
             echo "Integration suites detected."
+            {
+              echo "## Terraform integration discovery"
+              echo
+              echo "Executable provider-backed suites are present under \`tests/\`."
+            } >> "${GITHUB_STEP_SUMMARY}"
           else
             echo "No executable integration suites are defined yet."
+            {
+              echo "## Terraform integration discovery"
+              echo
+              echo "No executable provider-backed suites are defined yet."
+            } >> "${GITHUB_STEP_SUMMARY}"
           fi

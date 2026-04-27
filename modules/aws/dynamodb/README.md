@@ -1,6 +1,6 @@
 # aws/dynamodb
 
-Creates a DynamoDB table with optional secondary indexes and optional IAM user policy attachments.
+Creates a DynamoDB table with optional secondary indexes, point-in-time recovery, KMS encryption, and optional IAM user policy attachments.
 
 ## Inputs
 
@@ -14,6 +14,8 @@ Creates a DynamoDB table with optional secondary indexes and optional IAM user p
 | `range_key` | Sort key name. | `string` |
 | `global_secondary_indices` | Optional global secondary indexes. | `list(object(...))` |
 | `local_secondary_indices` | Optional local secondary indexes. | `list(object(...))` |
+| `kms_key_arn` | Optional existing KMS key ARN to use for table encryption. | `string` |
+| `kms_key_policy_json` | Optional explicit KMS key policy JSON for the module-managed key. | `string` |
 | `rw_user_name` | Optional IAM user to attach a read-write policy to. | `string` |
 | `ro_user_name` | Optional IAM user to attach a read-only policy to. | `string` |
 | `short_deployment_region` | Short region identifier used in the table name. | `string` |
@@ -24,6 +26,7 @@ Creates a DynamoDB table with optional secondary indexes and optional IAM user p
 | --- | --- |
 | `table_arn` | ARN of the DynamoDB table. |
 | `table_name` | Name of the DynamoDB table. |
+| `kms_key_arn` | ARN of the KMS key used for table encryption. |
 
 ## Example
 

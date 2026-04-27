@@ -25,10 +25,11 @@ Version tags should only be created or moved after the relevant pipelines have b
 
 Shared modules use a layered test model:
 
-1. static checks on every change with `terraform fmt -check` and `terraform validate`
+1. static checks on every change with `terraform fmt -check`, `terraform validate`, `tflint`, and `trivy config`
 2. module contract tests with `terraform test`
 3. executable examples under `examples/`
-4. higher-level cloud integration coverage under `tests/`, added separately when the module is ready for real provider-backed verification
+4. scheduled/manual compliance checks with `checkov`, keeping clearly consumer-specific controls explicitly allowlisted until the shared modules grow first-class support for them
+5. higher-level cloud integration coverage under `tests/`, added separately when the module is ready for real provider-backed verification
 
 The repository CI also enforces that every discovered module has both contract tests with real assertions and a matching example directory, so a green workflow means the module tree was actually discovered and exercised.
 

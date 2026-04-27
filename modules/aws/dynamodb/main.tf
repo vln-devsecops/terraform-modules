@@ -1,3 +1,48 @@
+locals {
+  kms_key_arn         = coalesce(var.kms_key_arn, aws_kms_key.this[0].arn)
+  kms_key_policy_json = var.kms_key_policy_json != null ? var.kms_key_policy_json : data.aws_iam_policy_document.kms.json
+  common_tags = {
+    app         = var.app_name
+    environment = var.deployment_environment
+    rg          = "security"
+    function    = var.function
+  }
+}
+
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "kms" {
+  statement {
+    sid    = "EnableRootPermissions"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_kms_key" "this" {
+  count = var.kms_key_arn == null ? 1 : 0
+
+  description             = "CMK for ddb-${var.app_name}-${var.deployment_environment}-${var.function}"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+  policy                  = local.kms_key_policy_json
+  tags                    = local.common_tags
+}
+
+resource "aws_kms_alias" "this" {
+  count = var.kms_key_arn == null ? 1 : 0
+
+  name          = "alias/ddb-${var.app_name}-${var.deployment_environment}-${var.function}"
+  target_key_id = aws_kms_key.this[0].key_id
+}
+
 resource "aws_dynamodb_table" "this" {
   name         = "ddb-${var.app_name}-${var.deployment_environment}-${var.short_deployment_region}-${var.function}"
   billing_mode = "PAY_PER_REQUEST"
@@ -42,6 +87,15 @@ resource "aws_dynamodb_table" "this" {
       name = attribute.value.name
       type = attribute.value.type
     }
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = local.kms_key_arn
   }
 
   tags = {

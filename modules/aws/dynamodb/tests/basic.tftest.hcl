@@ -1,5 +1,18 @@
 mock_provider "aws" {
   override_during = plan
+
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn    = "arn:aws:kms:us-east-1:123456789012:key/dynamodb"
+      key_id = "dynamodb"
+    }
+  }
 }
 
 run "table_name_and_tags_match_contract" {
@@ -12,6 +25,7 @@ run "table_name_and_tags_match_contract" {
     function                = "events"
     hash_key                = "pk"
     range_key               = "sk"
+    kms_key_policy_json     = jsonencode({ Version = "2012-10-17", Statement = [] })
     attributes = [
       {
         name = "pk"
@@ -40,6 +54,22 @@ run "table_name_and_tags_match_contract" {
     condition     = aws_dynamodb_table.this.tags.app == "sampleapp" && aws_dynamodb_table.this.tags.environment == "dev" && aws_dynamodb_table.this.tags.function == "events"
     error_message = "Table tags changed unexpectedly."
   }
+
+  assert {
+    condition = alltrue([
+      for pitr in aws_dynamodb_table.this.point_in_time_recovery :
+      pitr.enabled
+    ])
+    error_message = "Point-in-time recovery should stay enabled by default."
+  }
+
+  assert {
+    condition = alltrue([
+      for sse in aws_dynamodb_table.this.server_side_encryption :
+      sse.enabled
+    ]) && aws_kms_key.this[0].enable_key_rotation == true && output.kms_key_arn == "arn:aws:kms:us-east-1:123456789012:key/dynamodb"
+    error_message = "DynamoDB encryption defaults changed unexpectedly."
+  }
 }
 
 run "optional_iam_user_attachments_are_created" {
@@ -52,6 +82,7 @@ run "optional_iam_user_attachments_are_created" {
     function                = "events"
     hash_key                = "pk"
     range_key               = "sk"
+    kms_key_policy_json     = jsonencode({ Version = "2012-10-17", Statement = [] })
     rw_user_name            = "sample-rw"
     ro_user_name            = "sample-ro"
     attributes = [

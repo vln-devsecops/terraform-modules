@@ -1,6 +1,19 @@
 mock_provider "aws" {
   override_during = plan
 
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn    = "arn:aws:kms:us-east-1:123456789012:key/lambda"
+      key_id = "lambda"
+    }
+  }
+
   mock_data "aws_s3_object" {
     defaults = {
       checksum_sha256 = "c2FtcGxlLWNoZWNrc3Vt"
@@ -37,6 +50,7 @@ run "docxchange_defaults_preserve_archive_and_runtime_contract" {
     function_name          = "origin-response"
     source_bucket_arn      = "arn:aws:s3:::deployment-sampleapp"
     source_bucket_id       = "deployment-sampleapp"
+    kms_key_policy_json    = jsonencode({ Version = "2012-10-17", Statement = [] })
   }
 
   assert {
@@ -52,6 +66,14 @@ run "docxchange_defaults_preserve_archive_and_runtime_contract" {
   assert {
     condition     = aws_lambda_function.this.runtime == "nodejs22.x" && aws_lambda_function.this.timeout == 3 && aws_lambda_function.this.memory_size == 128
     error_message = "Default Lambda runtime contract changed unexpectedly."
+  }
+
+  assert {
+    condition = alltrue([
+      for tracing in aws_lambda_function.this.tracing_config :
+      tracing.mode == "Active"
+    ]) && aws_lambda_function.this.kms_key_arn == "arn:aws:kms:us-east-1:123456789012:key/lambda" && output.kms_key_arn == "arn:aws:kms:us-east-1:123456789012:key/lambda"
+    error_message = "Default Lambda encryption or tracing contract changed unexpectedly."
   }
 
   assert {
@@ -80,6 +102,7 @@ run "explicit_source_key_url_and_policy_attachments_work_together" {
     source_bucket_arn      = "arn:aws:s3:::deployment-sampleapp"
     source_bucket_id       = "deployment-sampleapp"
     source_object_key      = "lambdas/token-service/release.zip"
+    kms_key_policy_json    = jsonencode({ Version = "2012-10-17", Statement = [] })
     create_url             = true
     url_authorization_type = "AWS_IAM"
     additional_role_policy_arns = [
@@ -123,6 +146,7 @@ run "docxchange_extensions_cover_secrets_edge_trust_and_extra_s3_access" {
     function_name          = "contact-form"
     source_bucket_arn      = "arn:aws:s3:::deployment-sampleapp"
     source_bucket_id       = "deployment-sampleapp"
+    kms_key_policy_json    = jsonencode({ Version = "2012-10-17", Statement = [] })
     create_secret          = true
     backend_user_name      = "backend-user"
     assume_role_services = [
@@ -149,6 +173,11 @@ run "docxchange_extensions_cover_secrets_edge_trust_and_extra_s3_access" {
   assert {
     condition     = output.secret_name == "sampleapp-contact-form-stage-secrets" && output.secret_arn == "arn:aws:secretsmanager:us-east-1:123456789012:secret:sample"
     error_message = "Secrets Manager outputs changed unexpectedly."
+  }
+
+  assert {
+    condition     = aws_secretsmanager_secret.this[0].kms_key_id == "arn:aws:kms:us-east-1:123456789012:key/lambda" && aws_kms_key.this[0].enable_key_rotation == true
+    error_message = "Secret encryption should use the module-managed KMS key by default."
   }
 
   assert {

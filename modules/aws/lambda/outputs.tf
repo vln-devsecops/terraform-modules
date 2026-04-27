@@ -23,6 +23,11 @@ output "role_name" {
   value       = aws_iam_role.this.name
 }
 
+output "kms_key_arn" {
+  description = "ARN of the KMS key used for Lambda environment and secret encryption."
+  value       = local.kms_key_arn
+}
+
 output "url" {
   description = "Function URL when create_url is true."
   value       = try(aws_lambda_function_url.this[0].function_url, null)

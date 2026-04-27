@@ -73,6 +73,18 @@ variable "local_secondary_indices" {
   }
 }
 
+variable "kms_key_arn" {
+  description = "Optional existing KMS key ARN to use for table encryption. When omitted, the module creates a dedicated CMK."
+  type        = string
+  default     = null
+}
+
+variable "kms_key_policy_json" {
+  description = "Optional explicit KMS key policy JSON to use when the module creates a dedicated CMK."
+  type        = string
+  default     = null
+}
+
 variable "range_key" {
   description = "The sort key for the DynamoDB table."
   type        = string

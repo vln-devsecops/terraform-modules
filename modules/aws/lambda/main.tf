@@ -1,5 +1,7 @@
 locals {
   effective_source_object_key = coalesce(var.source_object_key, "${var.app_name}-${var.function_name}.zip")
+  kms_key_arn                 = coalesce(var.kms_key_arn, aws_kms_key.this[0].arn)
+  kms_key_policy_json         = var.kms_key_policy_json != null ? var.kms_key_policy_json : data.aws_iam_policy_document.kms.json
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -17,6 +19,40 @@ locals {
     environment = var.deployment_environment
     function    = var.function_name
   }
+}
+
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "kms" {
+  statement {
+    sid    = "EnableRootPermissions"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_kms_key" "this" {
+  count = var.kms_key_arn == null ? 1 : 0
+
+  description             = "CMK for ${var.app_name}-${var.function_name}-${var.deployment_environment} Lambda encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+  policy                  = local.kms_key_policy_json
+  tags                    = merge(local.common_tags, { rg = "security" })
+}
+
+resource "aws_kms_alias" "this" {
+  count = var.kms_key_arn == null ? 1 : 0
+
+  name          = "alias/${var.app_name}-${var.function_name}-${var.deployment_environment}-lambda"
+  target_key_id = aws_kms_key.this[0].key_id
 }
 
 resource "aws_iam_role" "this" {
@@ -109,6 +145,12 @@ resource "aws_lambda_function" "this" {
     variables = var.environment
   }
 
+  kms_key_arn = local.kms_key_arn
+
+  tracing_config {
+    mode = var.tracing_mode
+  }
+
   tags = merge(local.common_tags, { rg = "compute" })
 
   depends_on = [
@@ -122,6 +164,7 @@ resource "aws_secretsmanager_secret" "this" {
 
   name        = "${var.app_name}-${var.function_name}-${var.deployment_environment}-secrets"
   description = "Secrets for ${var.function_name} Lambda function in ${var.deployment_environment} environment"
+  kms_key_id  = local.kms_key_arn
   tags        = merge(local.common_tags, { purpose = "lambda-secrets", rg = "security" })
 }
 

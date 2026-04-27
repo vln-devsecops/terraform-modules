@@ -1,6 +1,6 @@
 # aws/deployment_bucket
 
-Creates a versioned S3 bucket for deployment artifacts with public access blocked.
+Creates a versioned S3 bucket for deployment artifacts with public access blocked and KMS encryption enabled by default.
 
 ## Inputs
 
@@ -9,6 +9,8 @@ Creates a versioned S3 bucket for deployment artifacts with public access blocke
 | `app_name` | Name of the application being deployed. | `string` |
 | `deployment_environment` | Deployment environment name such as dev, staging, or prod. | `string` |
 | `deployment_region` | Provider region identifier used in the bucket name. | `string` |
+| `kms_key_arn` | Optional existing KMS key ARN to use for bucket encryption. | `string` |
+| `kms_key_policy_json` | Optional explicit KMS key policy JSON for the module-managed key. | `string` |
 
 ## Outputs
 
@@ -17,6 +19,7 @@ Creates a versioned S3 bucket for deployment artifacts with public access blocke
 | `bucket_arn` | ARN of the deployment bucket. |
 | `bucket_id` | ID of the deployment bucket. |
 | `bucket_name` | Name of the deployment bucket. |
+| `kms_key_arn` | ARN of the KMS key used for bucket encryption. |
 
 ## Example
 

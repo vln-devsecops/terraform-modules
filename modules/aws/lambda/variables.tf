@@ -43,6 +43,18 @@ variable "environment" {
   default     = {}
 }
 
+variable "kms_key_arn" {
+  description = "Optional existing KMS key ARN to use for Lambda environment and secret encryption. When omitted, the module creates a dedicated CMK."
+  type        = string
+  default     = null
+}
+
+variable "kms_key_policy_json" {
+  description = "Optional explicit KMS key policy JSON to use when the module creates a dedicated CMK."
+  type        = string
+  default     = null
+}
+
 variable "source_bucket_arn" {
   description = "ARN of deployment source bucket."
   type        = string
@@ -63,6 +75,17 @@ variable "publish" {
   description = "Whether to publish a new function version on update."
   type        = bool
   default     = true
+}
+
+variable "tracing_mode" {
+  description = "AWS X-Ray tracing mode for the Lambda function."
+  type        = string
+  default     = "Active"
+
+  validation {
+    condition     = contains(["Active", "PassThrough"], var.tracing_mode)
+    error_message = "tracing_mode must be Active or PassThrough."
+  }
 }
 
 variable "create_url" {

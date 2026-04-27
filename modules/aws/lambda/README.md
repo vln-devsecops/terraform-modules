@@ -1,6 +1,6 @@
 # aws/lambda
 
-Creates an AWS Lambda function backed by an S3 deployment archive, with a reusable execution role, optional Function URL support, optional Secrets Manager support, optional extra S3 permissions, and optional extra IAM policy attachments.
+Creates an AWS Lambda function backed by an S3 deployment archive, with a reusable execution role, KMS-backed environment and secret encryption, X-Ray tracing enabled by default, optional Function URL support, optional Secrets Manager support, optional extra S3 permissions, and optional extra IAM policy attachments.
 
 The shared contract keeps the cleaner `coppice` shape while preserving the `docxchange` deployment archive naming convention by default. If `source_object_key` is omitted, the module looks for `${app_name}-${function_name}.zip`.
 
@@ -16,10 +16,13 @@ The shared contract keeps the cleaner `coppice` shape while preserving the `docx
 | `timeout` | Lambda timeout in seconds. | `number` |
 | `memory_size` | Lambda memory size in MB. | `number` |
 | `environment` | Lambda environment variables. | `map(string)` |
+| `kms_key_arn` | Optional existing KMS key ARN to use for Lambda encryption. | `string` |
+| `kms_key_policy_json` | Optional explicit KMS key policy JSON for the module-managed key. | `string` |
 | `source_bucket_arn` | ARN of deployment source bucket. | `string` |
 | `source_bucket_id` | Name or ID of deployment source bucket. | `string` |
 | `source_object_key` | Optional S3 object key for the deployment archive. Defaults to `app_name-function_name.zip`. | `string` |
 | `publish` | Whether to publish a new function version on update. | `bool` |
+| `tracing_mode` | AWS X-Ray tracing mode for the Lambda function. | `string` |
 | `create_url` | Whether to create a Lambda Function URL. | `bool` |
 | `url_authorization_type` | Auth type for Lambda Function URL when create_url is true. | `string` |
 | `create_secret` | Whether to create a Secrets Manager secret for the Lambda. | `bool` |
@@ -37,6 +40,7 @@ The shared contract keeps the cleaner `coppice` shape while preserving the `docx
 | `qualified_arn` | Qualified ARN of the Lambda function. |
 | `role_arn` | ARN of the Lambda execution role. |
 | `role_name` | Name of the Lambda execution role. |
+| `kms_key_arn` | ARN of the KMS key used for Lambda environment and secret encryption. |
 | `url` | Function URL when create_url is true. |
 | `secret_arn` | ARN of the generated secret when create_secret is true. |
 | `secret_name` | Name of the generated secret when create_secret is true. |
