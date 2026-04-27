@@ -60,27 +60,145 @@ jobs:
 
   discover:
     runs-on: ubuntu-latest
+    outputs:
+      suites: ${{ steps.discover.outputs.suites }}
+      suite_count: ${{ steps.discover.outputs.suite_count }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
       - name: Discover integration suites
+        id: discover
         shell: bash
         run: |
           set -euo pipefail
 
-          if find tests -type f \( -name 'run.sh' -o -name '*.go' \) | grep -q .; then
-            echo "Integration suites detected."
-            {
-              echo "## Terraform integration discovery"
-              echo
-              echo "Executable provider-backed suites are present under \`tests/\`."
-            } >> "${GITHUB_STEP_SUMMARY}"
-          else
-            echo "No executable integration suites are defined yet."
-            {
-              echo "## Terraform integration discovery"
-              echo
+          python3 - <<'PY' >> "${GITHUB_OUTPUT}"
+          import json
+          import os
+          import pathlib
+
+          suites = sorted(str(path) for path in pathlib.Path("tests/aws").rglob("run.sh"))
+          print(f"suite_count={len(suites)}")
+          print(f"suites={json.dumps(suites)}")
+          PY
+
+          mapfile -t suites < <(find tests/aws -type f -name 'run.sh' | sort)
+
+          {
+            echo "## Terraform integration discovery"
+            echo
+            if [ "${#suites[@]}" -eq 0 ]; then
               echo "No executable provider-backed suites are defined yet."
-            } >> "${GITHUB_STEP_SUMMARY}"
+            else
+              printf 'Discovered %s executable provider-backed suite(s):\n' "${#suites[@]}"
+              echo
+              for suite in "${suites[@]}"; do
+                printf -- '- `%s`\n' "${suite}"
+              done
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  credential_gate:
+    runs-on: ubuntu-latest
+    needs: discover
+    outputs:
+      credentials_available: ${{ steps.gate.outputs.credentials_available }}
+    steps:
+      - name: Detect AWS credentials
+        id: gate
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${AWS_ACCESS_KEY_ID}" ] && [ -n "${AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "credentials_available=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "credentials_available=false" >> "${GITHUB_OUTPUT}"
           fi
+
+  integration:
+    runs-on: ubuntu-latest
+    needs:
+      - discover
+      - credential_gate
+    if: needs.discover.outputs.suite_count != '0' && needs.credential_gate.outputs.credentials_available == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJson(needs.discover.outputs.suites) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.11.4
+
+      - name: Run provider-backed integration suite
+        id: suite
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+          MAIL_TEST_BASE_DOMAIN: ${{ vars.MAIL_TEST_BASE_DOMAIN }}
+          MAIL_TEST_ROUTE53_ZONE_ID: ${{ secrets.MAIL_TEST_ROUTE53_ZONE_ID }}
+          SUITE_PATH: ${{ matrix.suite }}
+        run: |
+          set -euo pipefail
+
+          status="pass"
+          set +e
+          bash "${SUITE_PATH}"
+          exit_code=$?
+          set -e
+
+          if [ "${exit_code}" -eq 2 ]; then
+            status="skip"
+          elif [ "${exit_code}" -ne 0 ]; then
+            status="fail"
+          fi
+
+          echo "status=${status}" >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "## Provider-backed integration suite"
+            echo
+            echo "| Suite | Result |"
+            echo "| --- | --- |"
+            printf '| `%s` | %s |\n' "${SUITE_PATH}" "${status}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ "${status}" = "fail" ]; then
+            exit 1
+          fi
+
+  integration_skipped:
+    runs-on: ubuntu-latest
+    needs:
+      - discover
+      - credential_gate
+    if: needs.discover.outputs.suite_count != '0' && needs.credential_gate.outputs.credentials_available != 'true'
+    steps:
+      - name: Summarize skipped live suites
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Provider-backed integration execution"
+            echo
+            echo "Executable suites are present, but the workflow did not receive AWS credentials."
+            echo
+            echo "Set repository or environment secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` to execute the live suites in GitHub Actions."
+            echo
+            echo "The mail suite also needs `MAIL_TEST_BASE_DOMAIN` as a repository variable and `MAIL_TEST_ROUTE53_ZONE_ID` as a secret."
+          } >> "${GITHUB_STEP_SUMMARY}"

@@ -1,6 +1,10 @@
-# Integration tests placeholder
+# Provider-backed DynamoDB suite
 
-This directory is reserved for higher-level integration coverage of `modules/aws/dynamodb`.
+This suite exercises `modules/aws/dynamodb` against real AWS APIs.
 
-Contract-level checks currently live in `modules/aws/dynamodb/tests/basic.tftest.hcl`.
-Real cloud integration coverage should be added here before the module is considered fully complete.
+- fixture: `main.tf`
+- entrypoint: `run.sh`
+- prerequisites: working AWS credentials in the environment
+
+The suite creates a uniquely named table, verifies the table name and KMS key
+outputs, and then destroys the fixture resources.

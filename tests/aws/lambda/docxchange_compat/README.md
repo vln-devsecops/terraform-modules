@@ -9,4 +9,9 @@ This provider-backed fixture exercises the shared Lambda module using the main `
 - Lambda@Edge trust
 - extra S3 permissions for frontend access
 
-Run from this directory with AWS credentials and a real deployment archive already present in the source bucket if you want provider-backed verification beyond `terraform test`.
+The fixture is self-contained: it creates the source bucket, frontend bucket,
+deployment archive object, and backend IAM user it needs before invoking the
+shared Lambda module.
+
+Run `./run.sh` from this directory with AWS credentials if you want provider-backed
+verification beyond `terraform test`.
