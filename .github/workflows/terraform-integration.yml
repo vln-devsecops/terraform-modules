@@ -13,19 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CHECKOV_VERSION: "3.2.525"
-      CHECKOV_SKIP_CHECKS: >-
-        CKV_AWS_18,
-        CKV_AWS_109,
-        CKV_AWS_111,
-        CKV_AWS_115,
-        CKV_AWS_116,
-        CKV_AWS_117,
-        CKV_AWS_144,
-        CKV_AWS_272,
-        CKV_AWS_356,
-        CKV2_AWS_57,
-        CKV2_AWS_61,
-        CKV2_AWS_62
+      CHECKOV_SKIP_CHECKS: "CKV_AWS_18,CKV_AWS_109,CKV_AWS_111,CKV_AWS_115,CKV_AWS_116,CKV_AWS_117,CKV_AWS_144,CKV_AWS_272,CKV_AWS_356,CKV2_AWS_57,CKV2_AWS_61,CKV2_AWS_62"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
