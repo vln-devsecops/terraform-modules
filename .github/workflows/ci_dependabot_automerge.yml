@@ -10,21 +10,6 @@ permissions:
   pull-requests: write
 
 jobs:
-  copilot_review:
-    runs-on: ubuntu-latest
-    if: >-
-      !github.event.pull_request.draft &&
-      (
-        github.event.pull_request.user.login == 'app/copilot-swe-agent' ||
-        github.event.pull_request.user.login == 'copilot-swe-agent[bot]'
-      )
-    steps:
-      - name: Approve Copilot agent PRs
-        run: gh pr review --approve "$PR_URL"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-
   automerge:
     runs-on: ubuntu-latest
     if: github.actor == 'dependabot[bot]'
