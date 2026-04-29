@@ -37,7 +37,7 @@ The repository CI also enforces that every discovered module has both contract t
 For local AWS test-user setup, `tests/aws/aws-live-suite-test-user-policy.json`
 contains a single custom IAM policy that covers the provider-backed suites. Update
 the Route53 hosted zone placeholder before attaching it if you want to run the
-mail suite.
+mail suite, and refresh that value whenever `MAIL_TEST_ROUTE53_ZONE_ID` changes.
 
 At the moment, `deployment_bucket` and `dynamodb` have static checks, contract tests, and executable examples in place. Their higher-level AWS integration coverage is still deferred.
 
