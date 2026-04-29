@@ -19,6 +19,7 @@
         "s3:DeleteObject",
         "s3:DeleteObjectVersion",
         "s3:GetBucketAcl",
+        "s3:GetBucketCORS",
         "s3:GetBucketLocation",
         "s3:GetBucketPolicy",
         "s3:GetBucketPublicAccessBlock",
@@ -68,6 +69,7 @@
       "Action": [
         "dynamodb:CreateTable",
         "dynamodb:DeleteTable",
+        "dynamodb:DescribeContinuousBackups",
         "dynamodb:DescribeTable",
         "dynamodb:ListTables",
         "dynamodb:TagResource",
