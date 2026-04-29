@@ -109,7 +109,7 @@ jobs:
         id: gate
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_ACCESS_KEY_ID: ${{ vars.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
         run: |
@@ -144,13 +144,13 @@ jobs:
         id: suite
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_ACCESS_KEY_ID: ${{ vars.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
           MAIL_TEST_BASE_DOMAIN: ${{ vars.MAIL_TEST_BASE_DOMAIN }}
-          MAIL_TEST_ROUTE53_ZONE_ID: ${{ secrets.MAIL_TEST_ROUTE53_ZONE_ID }}
+          MAIL_TEST_ROUTE53_ZONE_ID: ${{ vars.MAIL_TEST_ROUTE53_ZONE_ID }}
           SUITE_PATH: ${{ matrix.suite }}
         run: |
           set -euo pipefail
@@ -198,7 +198,7 @@ jobs:
             echo
             echo "Executable suites are present, but the workflow did not receive AWS credentials."
             echo
-            echo "Set repository or environment secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` to execute the live suites in GitHub Actions."
+            echo "Set `AWS_ACCESS_KEY_ID` as a repository or environment variable and `AWS_SECRET_ACCESS_KEY` as a secret to execute the live suites in GitHub Actions."
             echo
-            echo "The mail suite also needs `MAIL_TEST_BASE_DOMAIN` as a repository variable and `MAIL_TEST_ROUTE53_ZONE_ID` as a secret."
+            echo "The mail suite also needs `MAIL_TEST_BASE_DOMAIN` and `MAIL_TEST_ROUTE53_ZONE_ID` as repository or environment variables."
           } >> "${GITHUB_STEP_SUMMARY}"
