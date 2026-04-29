@@ -75,23 +75,12 @@
       "Resource": "*"
     },
     {
-      "Sid": "AllowIamForLiveSuites",
+      "Sid": "AllowIamCreateAndListForLiveSuites",
       "Effect": "Allow",
       "Action": [
-        "iam:AttachRolePolicy",
-        "iam:AttachUserPolicy",
         "iam:CreatePolicy",
         "iam:CreateRole",
         "iam:CreateUser",
-        "iam:DeletePolicy",
-        "iam:DeleteRole",
-        "iam:DeleteUser",
-        "iam:DetachRolePolicy",
-        "iam:DetachUserPolicy",
-        "iam:GetPolicy",
-        "iam:GetPolicyVersion",
-        "iam:GetRole",
-        "iam:GetUser",
         "iam:ListAttachedRolePolicies",
         "iam:ListAttachedUserPolicies",
         "iam:ListEntitiesForPolicy",
@@ -99,12 +88,49 @@
         "iam:ListPolicyVersions",
         "iam:ListRolePolicies",
         "iam:ListUserPolicies",
-        "iam:PassRole",
-        "iam:TagPolicy",
-        "iam:TagRole",
-        "iam:TagUser"
+        "iam:GetPolicyVersion",
+        "iam:AttachRolePolicy",
+        "iam:AttachUserPolicy",
+        "iam:DetachRolePolicy",
+        "iam:DetachUserPolicy"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "AllowIamManageLiveSuiteRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:PassRole",
+        "iam:TagRole"
+      ],
+      "Resource": "arn:aws:iam::*:role/iam_for_lambda_*"
+    },
+    {
+      "Sid": "AllowIamManageLiveSuiteUsers",
+      "Effect": "Allow",
+      "Action": [
+        "iam:DeleteUser",
+        "iam:GetUser",
+        "iam:TagUser"
+      ],
+      "Resource": "arn:aws:iam::*:user/backend-user-*"
+    },
+    {
+      "Sid": "AllowIamManageLiveSuitePolicies",
+      "Effect": "Allow",
+      "Action": [
+        "iam:DeletePolicy",
+        "iam:GetPolicy",
+        "iam:TagPolicy",
+        "iam:GetPolicyVersion"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:policy/*lambda*",
+        "arn:aws:iam::*:policy/*ddb-*",
+        "arn:aws:iam::*:policy/*secrets-policy*"
+      ]
     },
     {
       "Sid": "AllowLambdaForLiveSuites",
