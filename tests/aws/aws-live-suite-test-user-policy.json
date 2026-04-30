@@ -22,6 +22,7 @@
         "s3:GetAccelerateConfiguration",
         "s3:GetBucketCORS",
         "s3:GetBucketLocation",
+        "s3:GetLifecycleConfiguration",
         "s3:GetBucketLogging",
         "s3:GetBucketPolicy",
         "s3:GetBucketPublicAccessBlock",
