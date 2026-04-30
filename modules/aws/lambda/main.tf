@@ -198,6 +198,16 @@ resource "aws_iam_policy" "lambda_secrets_access" {
         Resource = [
           aws_secretsmanager_secret.this[0].arn
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ]
+        Resource = [
+          local.kms_key_arn
+        ]
       }
     ]
   })
@@ -228,6 +238,18 @@ resource "aws_iam_policy" "backend_user_secrets_access" {
         ]
         Resource = [
           aws_secretsmanager_secret.this[0].arn
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey",
+          "kms:Encrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = [
+          local.kms_key_arn
         ]
       }
     ]

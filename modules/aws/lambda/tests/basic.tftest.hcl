@@ -181,8 +181,25 @@ run "doxchange_extensions_cover_secrets_edge_trust_and_extra_s3_access" {
   }
 
   assert {
+    condition = (
+      strcontains(aws_iam_policy.lambda_secrets_access[0].policy, "\"kms:Decrypt\"") &&
+      strcontains(aws_iam_policy.lambda_secrets_access[0].policy, "\"kms:DescribeKey\"")
+    )
+    error_message = "Lambda secret access policy must include KMS read permissions for the configured secret key."
+  }
+
+  assert {
     condition     = aws_iam_user_policy_attachment.backend_user_secrets_access[0].user == "backend-user"
     error_message = "Backend-user secret access attachment changed unexpectedly."
+  }
+
+  assert {
+    condition = (
+      strcontains(aws_iam_policy.backend_user_secrets_access[0].policy, "\"kms:Decrypt\"") &&
+      strcontains(aws_iam_policy.backend_user_secrets_access[0].policy, "\"kms:Encrypt\"") &&
+      strcontains(aws_iam_policy.backend_user_secrets_access[0].policy, "\"kms:GenerateDataKey\"")
+    )
+    error_message = "Backend secret management policy must include KMS permissions for the configured secret key."
   }
 
   assert {
