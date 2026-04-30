@@ -160,6 +160,7 @@
                 "lambda:GetFunctionConfiguration",
                 "lambda:GetFunctionUrlConfig",
                 "lambda:ListTags",
+                "lambda:ListVersionsByFunction",
                 "lambda:TagResource",
                 "lambda:UntagResource",
                 "lambda:UpdateFunctionCode",
