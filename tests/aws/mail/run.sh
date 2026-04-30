@@ -9,11 +9,11 @@ require_env "MAIL_TEST_BASE_DOMAIN" "MAIL_TEST_BASE_DOMAIN is required to run th
 require_env "MAIL_TEST_ROUTE53_ZONE_ID" "MAIL_TEST_ROUTE53_ZONE_ID is required to run the mail integration suite."
 
 cleanup() {
-  terraform_destroy_quiet "${script_dir}"
-  cleanup_terraform_dir "${script_dir}"
+  local exit_code="$1"
+  run_terraform_cleanup "${script_dir}" "${exit_code}"
 }
 
-trap cleanup EXIT
+trap 'cleanup "$?"' EXIT
 
 export TF_VAR_name_suffix="${TF_VAR_name_suffix:-$(random_suffix)}"
 export TF_VAR_aws_region="${TF_VAR_aws_region:-$(default_aws_region)}"

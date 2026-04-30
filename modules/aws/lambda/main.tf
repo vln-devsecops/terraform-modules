@@ -2,6 +2,7 @@ locals {
   effective_source_object_key = coalesce(var.source_object_key, "${var.app_name}-${var.function_name}.zip")
   kms_key_arn                 = coalesce(var.kms_key_arn, aws_kms_key.this[0].arn)
   kms_key_policy_json         = var.kms_key_policy_json != null ? var.kms_key_policy_json : data.aws_iam_policy_document.kms.json
+  role_name                   = "iam_for_lambda_${var.function_name}_${var.deployment_environment}_${substr(md5(var.app_name), 0, 8)}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -56,7 +57,7 @@ resource "aws_kms_alias" "this" {
 }
 
 resource "aws_iam_role" "this" {
-  name               = "iam_for_lambda_${var.function_name}_${var.deployment_environment}"
+  name               = local.role_name
   assume_role_policy = local.assume_role_policy
   tags               = merge(local.common_tags, { rg = "security" })
 }

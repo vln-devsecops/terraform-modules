@@ -82,7 +82,7 @@ run "doxchange_defaults_preserve_archive_and_runtime_contract" {
   }
 
   assert {
-    condition     = output.role_name == "iam_for_lambda_origin-response_prod"
+    condition     = output.role_name == "iam_for_lambda_origin-response_prod_${substr(md5("sampleapp"), 0, 8)}"
     error_message = "Lambda role naming changed unexpectedly."
   }
 

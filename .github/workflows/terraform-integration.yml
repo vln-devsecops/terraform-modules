@@ -142,6 +142,20 @@ jobs:
         with:
           terraform_version: 1.11.4
 
+      - name: Derive suite metadata
+        id: suite_meta
+        shell: bash
+        env:
+          SUITE_PATH: ${{ matrix.suite }}
+        run: |
+          set -euo pipefail
+
+          suite_dir="$(dirname "${SUITE_PATH}")"
+          suite_name="${SUITE_PATH//\//-}"
+
+          echo "suite_dir=${suite_dir}" >> "${GITHUB_OUTPUT}"
+          echo "artifact_name=tfstate-${suite_name}-attempt-${GITHUB_RUN_ATTEMPT}" >> "${GITHUB_OUTPUT}"
+
       - name: Run provider-backed integration suite
         id: suite
         shell: bash
@@ -153,6 +167,7 @@ jobs:
           AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
           MAIL_TEST_BASE_DOMAIN: ${{ vars.MAIL_TEST_BASE_DOMAIN }}
           MAIL_TEST_ROUTE53_ZONE_ID: ${{ vars.MAIL_TEST_ROUTE53_ZONE_ID }}
+          TF_LIVE_SUITE_CAPTURE_TFSTATE: "1"
           SUITE_PATH: ${{ matrix.suite }}
         run: |
           set -euo pipefail
@@ -182,6 +197,19 @@ jobs:
           if [ "${status}" = "fail" ]; then
             exit 1
           fi
+
+      - name: Upload Terraform state artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.suite_meta.outputs.artifact_name }}
+          if-no-files-found: ignore
+          compression-level: 0
+          path: |
+            ${{ steps.suite_meta.outputs.suite_dir }}/.cleanup-state/**
+            ${{ steps.suite_meta.outputs.suite_dir }}/terraform.tfstate
+            ${{ steps.suite_meta.outputs.suite_dir }}/terraform.tfstate.backup
+            ${{ steps.suite_meta.outputs.suite_dir }}/crash.log
 
   integration_skipped:
     runs-on: ubuntu-latest
