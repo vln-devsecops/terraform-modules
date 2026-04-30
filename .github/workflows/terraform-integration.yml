@@ -200,16 +200,41 @@ jobs:
 
       - name: Upload Terraform state artifacts
         if: always()
+        id: stage_artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          artifact_dir="${RUNNER_TEMP}/${{ steps.suite_meta.outputs.artifact_name }}"
+          suite_dir="${{ steps.suite_meta.outputs.suite_dir }}"
+          found=0
+
+          rm -rf "${artifact_dir}"
+          mkdir -p "${artifact_dir}"
+
+          for path in \
+            "${suite_dir}/.cleanup-state" \
+            "${suite_dir}/terraform.tfstate" \
+            "${suite_dir}/terraform.tfstate.backup" \
+            "${suite_dir}/crash.log"; do
+            if [ -e "${path}" ]; then
+              cp -R "${path}" "${artifact_dir}/"
+              found=1
+            fi
+          done
+
+          echo "artifact_dir=${artifact_dir}" >> "${GITHUB_OUTPUT}"
+          echo "found=${found}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload Terraform state artifacts
+        if: always() && steps.stage_artifacts.outputs.found == '1'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.suite_meta.outputs.artifact_name }}
-          if-no-files-found: ignore
+          if-no-files-found: error
           compression-level: 0
-          path: |
-            ${{ steps.suite_meta.outputs.suite_dir }}/.cleanup-state/**
-            ${{ steps.suite_meta.outputs.suite_dir }}/terraform.tfstate
-            ${{ steps.suite_meta.outputs.suite_dir }}/terraform.tfstate.backup
-            ${{ steps.suite_meta.outputs.suite_dir }}/crash.log
+          include-hidden-files: true
+          path: ${{ steps.stage_artifacts.outputs.artifact_dir }}
 
   integration_skipped:
     runs-on: ubuntu-latest

@@ -99,6 +99,7 @@
                 "iam:ListAttachedRolePolicies",
                 "iam:ListAttachedUserPolicies",
                 "iam:ListEntitiesForPolicy",
+                "iam:ListGroupsForUser",
                 "iam:ListInstanceProfilesForRole",
                 "iam:ListPolicyVersions",
                 "iam:ListRolePolicies",

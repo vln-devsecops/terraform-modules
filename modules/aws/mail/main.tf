@@ -3,7 +3,6 @@ locals {
   effective_ses_feedback_region = coalesce(var.ses_feedback_region, var.deployment_region)
   effective_dmarc_policy        = coalesce(var.dmarc_policy, "reject")
   effective_dmarc_report_uri    = coalesce(var.dmarc_report_uri, "mailto:dmarc-reports@${var.domain_name}")
-  effective_tracking_domain     = coalesce(var.tracking_redirect_domain, var.domain_name)
 }
 
 resource "aws_ses_configuration_set" "this" {
@@ -13,8 +12,12 @@ resource "aws_ses_configuration_set" "this" {
     tls_policy = "Require"
   }
 
-  tracking_options {
-    custom_redirect_domain = local.effective_tracking_domain
+  dynamic "tracking_options" {
+    for_each = var.tracking_redirect_domain == null ? [] : [var.tracking_redirect_domain]
+
+    content {
+      custom_redirect_domain = tracking_options.value
+    }
   }
 }
 

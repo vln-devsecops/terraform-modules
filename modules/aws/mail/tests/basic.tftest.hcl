@@ -32,6 +32,11 @@ run "mail_contract_uses_expected_defaults" {
     condition     = contains(tolist(aws_route53_record.dmarc_record.records), "v=DMARC1; p=reject; rua=mailto:dmarc-reports@auth.example.com; aspf=r; adkim=r")
     error_message = "Default DMARC record changed unexpectedly."
   }
+
+  assert {
+    condition     = length(aws_ses_configuration_set.this.tracking_options) == 0
+    error_message = "Tracking options should be omitted when no redirect domain is provided."
+  }
 }
 
 run "mail_contract_honors_region_and_dmarc_overrides" {
@@ -62,5 +67,28 @@ run "mail_contract_honors_region_and_dmarc_overrides" {
   assert {
     condition     = contains(tolist(aws_route53_record.dmarc_record.records), "v=DMARC1; p=quarantine; rua=mailto:postmaster@example.com; aspf=r; adkim=r")
     error_message = "DMARC override changed unexpectedly."
+  }
+
+  assert {
+    condition     = length(aws_ses_configuration_set.this.tracking_options) == 0
+    error_message = "Tracking options should stay disabled unless a redirect domain is explicitly provided."
+  }
+}
+
+run "mail_contract_enables_tracking_only_when_requested" {
+  command = plan
+
+  variables {
+    deployment_environment   = "stage"
+    deployment_region        = "us-east-1"
+    domain_name              = "mail.example.com"
+    domain_prefix            = "mail"
+    route53_zone_id          = "Z1234567890"
+    tracking_redirect_domain = "click.mail.example.com"
+  }
+
+  assert {
+    condition     = aws_ses_configuration_set.this.tracking_options[0].custom_redirect_domain == "click.mail.example.com"
+    error_message = "Tracking redirect domain override was not honored."
   }
 }

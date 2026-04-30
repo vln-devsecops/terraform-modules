@@ -36,7 +36,7 @@ variable "ses_feedback_region" {
 }
 
 variable "tracking_redirect_domain" {
-  description = "Optional custom redirect domain for the SES configuration set. Defaults to domain_name."
+  description = "Optional custom redirect domain for the SES configuration set."
   type        = string
   default     = null
 }

@@ -13,7 +13,7 @@ Creates an SES domain-mail configuration with Route53 records for identity verif
 | `route53_zone_id` | Route53 hosted zone ID for the DNS records. | `string` |
 | `ses_inbound_region` | Optional inbound SMTP region override. | `string` |
 | `ses_feedback_region` | Optional MAIL FROM feedback SMTP region override. | `string` |
-| `tracking_redirect_domain` | Optional custom redirect domain for the SES configuration set. | `string` |
+| `tracking_redirect_domain` | Optional custom redirect domain for the SES configuration set. When omitted, no tracking redirect domain is configured. | `string` |
 | `dmarc_policy` | Optional DMARC policy override. | `string` |
 | `dmarc_report_uri` | Optional DMARC report URI override. | `string` |
 
