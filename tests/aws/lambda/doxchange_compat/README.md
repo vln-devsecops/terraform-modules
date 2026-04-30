@@ -1,6 +1,6 @@
-# AWS Lambda docxchange compatibility fixture
+# AWS Lambda doxchange compatibility fixture
 
-This provider-backed fixture exercises the shared Lambda module using the main `docxchange` compatibility edges:
+This provider-backed fixture exercises the shared Lambda module using the main `doxchange` compatibility edges:
 
 - implicit `app_name-function_name.zip` archive lookup
 - Lambda Function URL creation

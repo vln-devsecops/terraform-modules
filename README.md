@@ -41,4 +41,4 @@ mail suite, and refresh that value whenever `MAIL_TEST_ROUTE53_ZONE_ID` changes.
 
 At the moment, `deployment_bucket` and `dynamodb` have static checks, contract tests, and executable examples in place. Their higher-level AWS integration coverage is still deferred.
 
-`lambda` now adds both mock-provider contract coverage and a provider-backed compatibility fixture under `tests/aws/lambda/docxchange_compat` so the closest-to-production `docxchange` usage shape stays protected while the shared module evolves.
+`lambda` now adds both mock-provider contract coverage and a provider-backed compatibility fixture under `tests/aws/lambda/doxchange_compat` so the closest-to-production `doxchange` usage shape stays protected while the shared module evolves.

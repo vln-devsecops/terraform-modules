@@ -66,7 +66,7 @@ variable "source_bucket_id" {
 }
 
 variable "source_object_key" {
-  description = "Optional S3 object key for the deployment archive. Defaults to app_name-function_name.zip to preserve the existing docxchange contract."
+  description = "Optional S3 object key for the deployment archive. Defaults to app_name-function_name.zip to preserve the existing doxchange contract."
   type        = string
   default     = null
 }

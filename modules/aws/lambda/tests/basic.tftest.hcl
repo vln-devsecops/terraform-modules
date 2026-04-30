@@ -41,7 +41,7 @@ mock_provider "aws" {
   }
 }
 
-run "docxchange_defaults_preserve_archive_and_runtime_contract" {
+run "doxchange_defaults_preserve_archive_and_runtime_contract" {
   command = plan
 
   variables {
@@ -137,7 +137,7 @@ run "explicit_source_key_url_and_policy_attachments_work_together" {
   }
 }
 
-run "docxchange_extensions_cover_secrets_edge_trust_and_extra_s3_access" {
+run "doxchange_extensions_cover_secrets_edge_trust_and_extra_s3_access" {
   command = plan
 
   variables {

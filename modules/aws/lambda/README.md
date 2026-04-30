@@ -2,7 +2,7 @@
 
 Creates an AWS Lambda function backed by an S3 deployment archive, with a reusable execution role, KMS-backed environment and secret encryption, X-Ray tracing enabled by default, optional Function URL support, optional Secrets Manager support, optional extra S3 permissions, and optional extra IAM policy attachments.
 
-The shared contract keeps the cleaner `coppice` shape while preserving the `docxchange` deployment archive naming convention by default. If `source_object_key` is omitted, the module looks for `${app_name}-${function_name}.zip`.
+The shared contract keeps the cleaner `coppice` shape while preserving the `doxchange` deployment archive naming convention by default. If `source_object_key` is omitted, the module looks for `${app_name}-${function_name}.zip`.
 
 ## Inputs
 
