@@ -228,6 +228,46 @@
                 "route53:ListHostedZonesByName"
             ],
             "Resource": "*"
+        },
+        {
+            "Sid": "AllowAcmForStaticSiteSuite",
+            "Effect": "Allow",
+            "Action": [
+                "acm:AddTagsToCertificate",
+                "acm:DeleteCertificate",
+                "acm:DescribeCertificate",
+                "acm:ListCertificates",
+                "acm:ListTagsForCertificate",
+                "acm:RequestCertificate"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "AllowCloudFrontForStaticSiteSuite",
+            "Effect": "Allow",
+            "Action": [
+                "cloudfront:CreateDistribution",
+                "cloudfront:CreateFunction",
+                "cloudfront:CreateInvalidation",
+                "cloudfront:CreateOriginAccessControl",
+                "cloudfront:DeleteDistribution",
+                "cloudfront:DeleteFunction",
+                "cloudfront:DeleteOriginAccessControl",
+                "cloudfront:DescribeFunction",
+                "cloudfront:GetDistribution",
+                "cloudfront:GetDistributionConfig",
+                "cloudfront:GetFunction",
+                "cloudfront:GetInvalidation",
+                "cloudfront:GetOriginAccessControl",
+                "cloudfront:ListTagsForResource",
+                "cloudfront:PublishFunction",
+                "cloudfront:TagResource",
+                "cloudfront:UntagResource",
+                "cloudfront:UpdateDistribution",
+                "cloudfront:UpdateFunction",
+                "cloudfront:UpdateOriginAccessControl"
+            ],
+            "Resource": "*"
         }
     ]
 }

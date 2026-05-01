@@ -20,6 +20,7 @@ Version tags should only be created or moved after the relevant pipelines have b
 - `modules/aws/dynamodb`
 - `modules/aws/mail`
 - `modules/aws/lambda`
+- `modules/aws/static_site`
 
 ## Testing approach
 
