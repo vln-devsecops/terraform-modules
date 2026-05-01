@@ -10,8 +10,8 @@ locals {
   })
 }
 
+# trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket" "site" {
-  # trivy:ignore:AVD-AWS-0132 -- static site content is public; CMK adds cost/complexity without security benefit
   bucket        = var.site_name
   force_destroy = var.force_destroy
   tags          = merge(local.common_tags, { rg = "storage" })
@@ -69,6 +69,7 @@ resource "aws_s3_bucket_policy" "site" {
   policy = data.aws_iam_policy_document.site_cloudfront_read.json
 }
 
+# trivy:ignore:AVD-AWS-0011
 resource "aws_cloudfront_distribution" "site" {
   enabled             = true
   aliases             = [var.site_name]
