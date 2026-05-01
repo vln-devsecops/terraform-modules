@@ -77,7 +77,7 @@ resource "aws_iam_user" "backend" {
 }
 
 module "lambda" {
-  source = "../../../../modules/aws/lambda"
+  source = "../../../../modules/aws/lambda-at-edge"
 
   app_name               = local.effective_app_name
   deployment_environment = var.deployment_environment
@@ -89,10 +89,6 @@ module "lambda" {
   create_secret     = true
   create_url        = true
   backend_user_name = aws_iam_user.backend.name
-  assume_role_services = [
-    "lambda.amazonaws.com",
-    "edgelambda.amazonaws.com",
-  ]
   s3_required_access = {
     read_frontend = {
       action    = "s3:GetObject"
@@ -133,4 +129,8 @@ output "kms_key_arn" {
 
 output "url" {
   value = module.lambda.url
+}
+
+output "edge_replication_policy_arn" {
+  value = module.lambda.edge_replication_policy_arn
 }
