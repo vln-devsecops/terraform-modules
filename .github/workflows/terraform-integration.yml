@@ -3,7 +3,7 @@ name: Terraform Integration
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 4 * * *"
+    - cron: "17 4 * * 0"
 
 permissions:
   contents: read
