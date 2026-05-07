@@ -174,6 +174,30 @@ jobs:
 
           cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
 
+      - name: Verify README lists every module
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t module_dirs < <(find modules -type f -name 'versions.tf' -not -path '*/.terraform/*' -printf '%h\n' | sort -u)
+
+          missing=()
+          for module_dir in "${module_dirs[@]}"; do
+            short="${module_dir#modules/}"
+            if ! grep -qF "${short}" README.md; then
+              missing+=("${module_dir}")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "The following modules are not mentioned in README.md:"
+            printf '  %s\n' "${missing[@]}"
+            echo "Update the 'Current modules' section in README.md before merging."
+            exit 1
+          fi
+
+          echo "README.md lists all ${#module_dirs[@]} discovered modules."
+
   modules:
     runs-on: ubuntu-latest
     steps:
