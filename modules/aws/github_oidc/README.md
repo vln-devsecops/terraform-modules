@@ -123,6 +123,125 @@ steps:
       aws-region: ${{ vars.AWS_REGION }}
 ```
 
+## Prerequisites
+
+### AWS side
+
+**First apply — bootstrap credentials**
+
+There is a chicken-and-egg problem: you need AWS credentials to create the OIDC
+provider and roles, but those roles are what you want instead of long-lived credentials.
+
+For the initial setup, run `terraform apply` locally (or in CI) using an existing IAM
+user or admin credentials. Once the roles exist, update your workflows to use OIDC and
+then you can stop using the static credentials.
+
+**Minimum IAM permissions for the applying identity**
+
+The identity running `terraform apply` needs at least:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "OIDCProvider",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateOpenIDConnectProvider",
+        "iam:GetOpenIDConnectProvider",
+        "iam:UpdateOpenIDConnectProviderThumbprint",
+        "iam:AddClientIDToOpenIDConnectProvider",
+        "iam:DeleteOpenIDConnectProvider",
+        "iam:TagOpenIDConnectProvider",
+        "iam:ListOpenIDConnectProviderTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:GetRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:DeleteRole",
+        "iam:TagRole",
+        "iam:ListRoleTags",
+        "iam:PutRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies"
+      ],
+      "Resource": "arn:aws:iam::*:role/YOUR-ROLE-PREFIX-*"
+    }
+  ]
+}
+```
+
+Scope the `Resource` in `IAMRoles` to match your role naming convention. If your roles
+are not prefixed, use `"arn:aws:iam::*:role/*"` but prefer a prefix for least privilege.
+
+### GitHub side
+
+**`permissions: id-token: write` is required**
+
+GitHub does not mint an OIDC token for a workflow job unless the job (or the calling
+workflow) explicitly requests it:
+
+```yaml
+permissions:
+  id-token: write   # required — GitHub will not issue an OIDC token without this
+  contents: read
+```
+
+If this is omitted the `aws-actions/configure-aws-credentials` step will fail with an
+error like `Credentials could not be loaded` or a 401 from the OIDC token endpoint.
+
+**Org-level OIDC token issuance**
+
+Some GitHub organisations disable OIDC token issuance for Actions by policy. If your
+workflows fail with an error about OIDC tokens being disabled, an organisation owner
+needs to allow it under **Settings → Actions → General → Allow GitHub Actions to
+request OIDC tokens**.
+
+**Subject claim customisation (recommended for production)**
+
+By default GitHub's `sub` claim format depends on the workflow context:
+
+| Workflow context | Default `sub` value |
+| --- | --- |
+| Job targeting a GitHub environment | `repo:OWNER/REPO:environment:ENV` |
+| Job on a branch (no environment) | `repo:OWNER/REPO:ref:refs/heads/BRANCH` |
+| Pull request | `repo:OWNER/REPO:pull_request` |
+
+This means a job running *without* an environment can potentially match a
+`repo:OWNER/REPO:*` subject claim and assume a role that was intended only for
+environment-gated workflows.
+
+To harden this, set the org-level OIDC subject customisation so that the `sub` claim
+always includes the environment field. Run this once per GitHub organisation (requires
+org owner permissions):
+
+```bash
+gh api \
+  --method PUT \
+  /orgs/YOUR-ORG/actions/oidc/customization/sub \
+  --field 'include_claim_keys[]=repo' \
+  --field 'include_claim_keys[]=environment'
+```
+
+After this change, jobs that do not target a named GitHub environment will have
+`environment` set to an empty string in the `sub` claim, making
+`repo:OWNER/REPO:environment:production` unmatchable from a branch-only job.
+
+Individual repositories can override the org setting under **Settings → Code and
+automation → Actions → General → OIDC token customisation**. Avoid per-repo overrides
+unless you have a specific reason — consistent org-wide behaviour is easier to audit.
+
 ## Notes
 
 - The module uses `StringLike` for subject claim conditions to support wildcard patterns.
