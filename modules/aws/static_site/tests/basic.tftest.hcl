@@ -16,6 +16,7 @@ mock_provider "aws" {
       status                         = "Deployed"
       etag                           = "test"
       in_progress_validation_batches = 0
+      web_acl_id                     = null
     }
   }
 }
@@ -89,5 +90,67 @@ run "optional_basic_auth_is_rendered_at_edge" {
   assert {
     condition     = aws_cloudfront_function.viewer_request.name == "dashboard-locked-devsecops-vlinder-ca-viewer-request"
     error_message = "Viewer-request function naming changed unexpectedly."
+  }
+}
+
+run "explicit_custom_error_responses_override_spa_fallback" {
+  command = plan
+
+  variables {
+    site_name           = "test-explicit.devsecops.vlinder.ca"
+    route53_zone_id     = "Z1234567890"
+    acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    enable_spa_fallback = true # should be ignored when custom_error_responses is set
+    custom_error_responses = [
+      {
+        error_code         = 404
+        response_code      = 404
+        response_page_path = "/404.html"
+      }
+    ]
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_distribution.site.custom_error_response) == 1
+    error_message = "Explicit custom_error_responses should override enable_spa_fallback."
+  }
+
+  assert {
+    condition     = one([for r in aws_cloudfront_distribution.site.custom_error_response : r if r.error_code == 404]).response_page_path == "/404.html"
+    error_message = "Custom error response page path should be /404.html."
+  }
+}
+
+run "waf_acl_and_access_logging_are_applied" {
+  command = plan
+
+  variables {
+    site_name                  = "test-waf.devsecops.vlinder.ca"
+    route53_zone_id            = "Z1234567890"
+    acm_certificate_arn        = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    waf_web_acl_arn            = "arn:aws:wafv2:us-east-1:123456789012:global/webacl/test/abc"
+    access_log_bucket          = "my-logs.s3.amazonaws.com"
+    access_log_prefix          = "cf-access/"
+    response_headers_policy_id = "67f7725c-6f97-4210-82d7-5512b31e9d03"
+  }
+
+  assert {
+    condition     = aws_cloudfront_distribution.site.web_acl_id == "arn:aws:wafv2:us-east-1:123456789012:global/webacl/test/abc"
+    error_message = "WAF web ACL ARN should be applied to the CloudFront distribution."
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_distribution.site.logging_config) == 1
+    error_message = "Access logging config should be set when access_log_bucket is provided."
+  }
+
+  assert {
+    condition     = one(aws_cloudfront_distribution.site.logging_config).bucket == "my-logs.s3.amazonaws.com"
+    error_message = "Access log bucket should match the provided value."
+  }
+
+  assert {
+    condition     = one(aws_cloudfront_distribution.site.default_cache_behavior).response_headers_policy_id == "67f7725c-6f97-4210-82d7-5512b31e9d03"
+    error_message = "Response headers policy ID should be applied to the default cache behavior."
   }
 }

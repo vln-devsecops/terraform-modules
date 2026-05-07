@@ -94,6 +94,41 @@ variable "basic_auth_realm" {
   default     = "Restricted"
 }
 
+variable "access_log_bucket" {
+  description = "S3 bucket domain name for CloudFront access logs. Set to enable access logging."
+  type        = string
+  default     = null
+}
+
+variable "access_log_prefix" {
+  description = "Prefix for CloudFront access log objects."
+  type        = string
+  default     = ""
+}
+
+variable "waf_web_acl_arn" {
+  description = "ARN of a WAF web ACL to associate with the CloudFront distribution. Must be in us-east-1."
+  type        = string
+  default     = null
+}
+
+variable "custom_error_responses" {
+  description = "Explicit custom error response rules. When set, overrides enable_spa_fallback. Each entry maps an HTTP error code to a response."
+  type = list(object({
+    error_code            = number
+    response_code         = number
+    response_page_path    = string
+    error_caching_min_ttl = optional(number, 300)
+  }))
+  default = null
+}
+
+variable "response_headers_policy_id" {
+  description = "CloudFront managed or custom response headers policy ID to attach to the default cache behavior."
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   description = "Additional tags to apply to created resources."
   type        = map(string)

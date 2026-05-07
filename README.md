@@ -18,13 +18,15 @@ Version tags should only be created or moved after the relevant pipelines have b
 
 | Module | Description |
 | --- | --- |
+| `modules/aws/acm_certificate` | ACM certificate with Route 53 DNS validation, wildcard SANs, and provider-aliased `us-east-1` support |
 | `modules/aws/deployment_bucket` | S3 bucket for Lambda deployment archives, with KMS encryption and versioning |
 | `modules/aws/dynamodb` | DynamoDB table with optional KMS encryption, TTL, and IAM access policies |
 | `modules/aws/github_oidc` | GitHub Actions OIDC identity provider and IAM roles for keyless AWS access |
+| `modules/aws/http_api` | API Gateway HTTP API (v2) with Lambda integrations, JWT authorizers (e.g. Coppice), and optional custom domain |
 | `modules/aws/lambda` | Lambda function backed by an S3 archive, with KMS, X-Ray, optional URL and Secrets Manager |
 | `modules/aws/lambda-at-edge` | Lambda@Edge variant with CloudFront replication trust and IAM |
 | `modules/aws/mail` | SES domain identity, DKIM, Route 53 records, and sending IAM policy |
-| `modules/aws/static_site` | CloudFront + S3 static site with ACM, Route 53, and SPA fallback |
+| `modules/aws/static_site` | CloudFront + S3 static site with ACM, Route 53, SPA fallback, WAF, access logging, and response headers policy |
 | `modules/aws/vpc` | VPC with public/private subnets, NAT gateway, and flow logs |
 
 ## Testing approach

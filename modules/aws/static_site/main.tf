@@ -8,6 +8,12 @@ locals {
     basic_auth_realm   = var.basic_auth_realm
     enable_pretty_urls = var.enable_pretty_urls ? "true" : "false"
   })
+  effective_custom_error_responses = var.custom_error_responses != null ? var.custom_error_responses : (
+    var.enable_spa_fallback ? [
+      { error_code = 403, response_code = 200, response_page_path = "/${var.default_root_object}", error_caching_min_ttl = 300 },
+      { error_code = 404, response_code = 200, response_page_path = "/${var.default_root_object}", error_caching_min_ttl = 300 },
+    ] : []
+  )
 }
 
 # trivy:ignore:AVD-AWS-0132
@@ -77,6 +83,7 @@ resource "aws_cloudfront_distribution" "site" {
   is_ipv6_enabled     = true
   http_version        = var.http_version
   price_class         = var.cloudfront_price_class
+  web_acl_id          = var.waf_web_acl_arn
 
   origin {
     domain_name                 = aws_s3_bucket.site.bucket_regional_domain_name
@@ -90,9 +97,10 @@ resource "aws_cloudfront_distribution" "site" {
   }
 
   default_cache_behavior {
-    target_origin_id       = "StaticSite"
-    viewer_protocol_policy = "redirect-to-https"
-    compress               = true
+    target_origin_id           = "StaticSite"
+    viewer_protocol_policy     = "redirect-to-https"
+    compress                   = true
+    response_headers_policy_id = var.response_headers_policy_id
 
     allowed_methods = ["GET", "HEAD", "OPTIONS"]
     cached_methods  = ["GET", "HEAD", "OPTIONS"]
@@ -111,14 +119,23 @@ resource "aws_cloudfront_distribution" "site" {
     }
   }
 
+  dynamic "logging_config" {
+    for_each = var.access_log_bucket != null ? [1] : []
+    content {
+      bucket          = var.access_log_bucket
+      prefix          = var.access_log_prefix
+      include_cookies = false
+    }
+  }
+
   dynamic "custom_error_response" {
-    for_each = var.enable_spa_fallback ? toset([403, 404]) : toset([])
+    for_each = { for i, v in local.effective_custom_error_responses : i => v }
 
     content {
-      error_code            = custom_error_response.value
-      response_code         = 200
-      response_page_path    = "/${var.default_root_object}"
-      error_caching_min_ttl = 300
+      error_code            = custom_error_response.value.error_code
+      response_code         = custom_error_response.value.response_code
+      response_page_path    = custom_error_response.value.response_page_path
+      error_caching_min_ttl = custom_error_response.value.error_caching_min_ttl
     }
   }
 
