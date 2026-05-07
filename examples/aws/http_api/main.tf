@@ -13,7 +13,7 @@ provider "aws" {
 }
 
 module "forms_api" {
-  source = "../../modules/aws/http_api"
+  source = "../../../modules/aws/http_api"
 
   name = "books-forms"
 

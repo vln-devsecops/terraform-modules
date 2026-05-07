@@ -4,12 +4,12 @@ mock_provider "aws" {
   mock_resource "aws_acm_certificate" {
     defaults = {
       arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
-      domain_validation_options = toset([{
+      domain_validation_options = [{
         domain_name           = "example.com"
         resource_record_name  = "_abc123.example.com."
         resource_record_type  = "CNAME"
         resource_record_value = "_def456.acm.amazonaws.com."
-      }])
+      }]
       status = "PENDING_VALIDATION"
     }
   }

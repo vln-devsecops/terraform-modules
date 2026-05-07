@@ -18,7 +18,7 @@ provider "aws" {
 }
 
 module "certificate" {
-  source = "../../modules/aws/acm_certificate"
+  source = "../../../modules/aws/acm_certificate"
 
   domain_name         = var.domain_name
   subject_alt_names   = var.subject_alt_names
