@@ -19,6 +19,7 @@ Version tags should only be created or moved after the relevant pipelines have b
 | Module | Description |
 | --- | --- |
 | `modules/aws/acm_certificate` | ACM certificate with Route 53 DNS validation, wildcard SANs, and provider-aliased `us-east-1` support |
+| `modules/aws/central_logs` | S3-based central log aggregation for multi-account organisations, with KMS encryption, Glacier lifecycle, cross-account write policy, and optional multi-region CloudTrail |
 | `modules/aws/deployment_bucket` | S3 bucket for Lambda deployment archives, with KMS encryption and versioning |
 | `modules/aws/dynamodb` | DynamoDB table with optional KMS encryption, TTL, and IAM access policies |
 | `modules/aws/github_oidc` | GitHub Actions OIDC identity provider and IAM roles for keyless AWS access |
