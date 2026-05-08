@@ -1,0 +1,31 @@
+name: Tag latest
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  tag_latest:
+    name: Move latest tag to HEAD
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Move latest tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git tag -f latest HEAD
+          git push origin latest --force
+
+          {
+            echo "## Tag update"
+            echo
+            echo "Moved \`latest\` → \`$(git rev-parse HEAD)\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
