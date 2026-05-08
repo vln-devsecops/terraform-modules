@@ -27,7 +27,7 @@ Version tags should only be created or moved after the relevant pipelines have b
 | `modules/aws/lambda-at-edge` | Lambda@Edge variant with CloudFront replication trust and IAM |
 | `modules/aws/mail` | SES domain identity, DKIM, Route 53 records, and sending IAM policy |
 | `modules/aws/static_site` | CloudFront + S3 static site with ACM, Route 53, SPA fallback, WAF, access logging, and response headers policy |
-| `modules/aws/vpc` | VPC with public/private subnets, NAT gateway, and flow logs |
+| `modules/aws/vpc` | VPC with public subnets and Internet Gateway (no NAT gateway) |
 
 ## Testing approach
 
