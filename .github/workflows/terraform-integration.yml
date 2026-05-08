@@ -259,7 +259,7 @@ jobs:
             echo
             echo "Executable suites are present, but the workflow did not receive AWS credentials."
             echo
-            echo "Set `AWS_ACCESS_KEY_ID` as a repository or environment variable and `AWS_SECRET_ACCESS_KEY` as a secret to execute the live suites in GitHub Actions."
+            echo "Set `TERRAFORM_MODULES_INTEGRATION_ROLE_ARN` and `AWS_REGION` as repository or environment variables so GitHub Actions can assume the role via OIDC."
             echo
             echo "The mail suite also needs `MAIL_TEST_BASE_DOMAIN` and `MAIL_TEST_ROUTE53_ZONE_ID` as repository or environment variables."
           } >> "${GITHUB_STEP_SUMMARY}"
