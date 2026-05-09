@@ -1,9 +1,11 @@
+
 name: Tag latest
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
+
 
 permissions:
   contents: write
@@ -22,14 +24,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Move latest tag
+      - name: Validate this is the highest version tag
+        id: validate
         shell: bash
         run: |
           set -euo pipefail
+          current_tag="${GITHUB_REF#refs/tags/}"
+          # List all v-prefixed tags, sort semver, get highest
+          highest_tag=$(git tag --list 'v*' | sort -V | tail -n1)
+          echo "Current tag: $current_tag"
+          echo "Highest tag: $highest_tag"
+          if [[ "$current_tag" != "$highest_tag" ]]; then
+            echo "::error::Current tag $current_tag is not the highest version ($highest_tag). Aborting."
+            exit 1
+          fi
 
+      - name: Move latest tag
+        if: steps.validate.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
           git tag -f latest HEAD
           git push origin latest --force
-
           {
             echo "## Tag update"
             echo
