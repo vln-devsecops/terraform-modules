@@ -1,6 +1,6 @@
-# aws/s3_log_replication
+# aws/s3_replication
 
-Enables S3 log replication from a source bucket to a central (cross-account) log aggregation bucket.
+Enables S3 replication from a source bucket to a central (cross-account) log aggregation bucket.
 
 Enables versioning on the source bucket (required by S3 for replication), creates an IAM replication role, and configures an S3 replication rule.
 
@@ -8,7 +8,7 @@ Enables versioning on the source bucket (required by S3 for replication), create
 
 ```hcl
 module "cloudfront_log_replication" {
-  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/s3_log_replication?ref=vX.Y"
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/s3_replication?ref=vX.Y"
 
   source_bucket_id       = aws_s3_bucket.cloudfront_logs.id
   source_bucket_arn      = aws_s3_bucket.cloudfront_logs.arn
