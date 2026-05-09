@@ -1,5 +1,5 @@
 ---
-name: ci_dependabot_automerge
+name: Auto-merge Dependabot updates
 
 on:
   pull_request:
