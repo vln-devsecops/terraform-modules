@@ -12,7 +12,7 @@ provider "aws" {
 }
 
 resource "aws_s3_bucket" "source" {
-  bucket = var.source_bucket_name
+  bucket        = var.source_bucket_name
   force_destroy = true
   tags = {
     Name = "source-bucket"
@@ -20,7 +20,7 @@ resource "aws_s3_bucket" "source" {
 }
 
 resource "aws_s3_bucket" "destination" {
-  bucket = var.destination_bucket_name
+  bucket        = var.destination_bucket_name
   force_destroy = true
   tags = {
     Name = "destination-bucket"
