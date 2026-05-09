@@ -8,6 +8,12 @@ on:
 permissions:
   contents: write
 
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+
 jobs:
   tag_latest:
     name: Move latest tag to HEAD
