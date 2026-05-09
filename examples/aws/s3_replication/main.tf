@@ -1,4 +1,6 @@
 terraform {
+  required_version = ">= 1.6.0"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -11,11 +13,36 @@ provider "aws" {
   region = var.region
 }
 
+resource "aws_kms_key" "buckets" {
+  description             = "KMS key for source and destination bucket encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+
 resource "aws_s3_bucket" "source" {
   bucket        = var.source_bucket_name
   force_destroy = true
   tags = {
     Name = "source-bucket"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "source" {
+  bucket                  = aws_s3_bucket.source.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "source" {
+  bucket = aws_s3_bucket.source.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.buckets.arn
+    }
   }
 }
 
@@ -27,14 +54,33 @@ resource "aws_s3_bucket" "destination" {
   }
 }
 
+resource "aws_s3_bucket_public_access_block" "destination" {
+  bucket                  = aws_s3_bucket.destination.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "destination" {
+  bucket = aws_s3_bucket.destination.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.buckets.arn
+    }
+  }
+}
+
 module "s3_replication" {
   source = "../../../modules/aws/s3_replication"
 
   source_bucket_id       = aws_s3_bucket.source.id
   source_bucket_arn      = aws_s3_bucket.source.arn
   destination_bucket_arn = aws_s3_bucket.destination.arn
-  role_name              = "example-s3-log-replication"
-  rule_id                = "replicate-example-logs"
+  role_name              = "example-s3-replication"
+  rule_id                = "replicate-example-objects"
   tags = {
     Environment = "example"
   }
