@@ -260,3 +260,23 @@ run "cors_configuration_is_applied_when_provided" {
     error_message = "CORS max_age must be 600."
   }
 }
+
+run "access_log_group_name_sanitizes_stage_name" {
+  command = plan
+
+  variables {
+    name                    = "logs-api"
+    create_access_log_group = true
+    stage_name              = "prod:blue@v1/#ok.x_y-z"
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_log_group.access_logs) == 1
+    error_message = "Expected one access log group when create_access_log_group is true."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_group.access_logs[0].name == "/aws/apigateway/logs-api/prod-blue-v1/#ok.x_y-z"
+    error_message = "Access log group name must sanitize disallowed stage_name characters."
+  }
+}

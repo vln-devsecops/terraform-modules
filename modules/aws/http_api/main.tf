@@ -5,6 +5,9 @@ locals {
     route_key => aws_apigatewayv2_authorizer.jwt[route.authorizer_key].id
     if route.authorizer_key != null
   }
+
+  # CloudWatch log group names allow alphanumeric, underscore, hyphen, slash, hash, and dot.
+  sanitized_stage_name = regexreplace(var.stage_name, "[^0-9A-Za-z_/#.-]", "-")
 }
 
 resource "aws_apigatewayv2_api" "this" {
@@ -44,7 +47,7 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
 resource "aws_cloudwatch_log_group" "access_logs" {
   count = var.create_access_log_group ? 1 : 0
 
-  name              = "/aws/apigateway/${var.name}/${var.stage_name}"
+  name              = "/aws/apigateway/${var.name}/${local.sanitized_stage_name}"
   retention_in_days = var.access_log_retention_days
   tags              = var.tags
 }
