@@ -90,10 +90,6 @@ resource "aws_cloudfront_distribution" "site" {
     origin_id                   = "StaticSite"
     origin_access_control_id    = aws_cloudfront_origin_access_control.site.id
     response_completion_timeout = 0
-
-    s3_origin_config {
-      origin_access_identity = ""
-    }
   }
 
   default_cache_behavior {
