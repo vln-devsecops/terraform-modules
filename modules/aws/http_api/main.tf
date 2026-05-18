@@ -7,7 +7,7 @@ locals {
   }
 
   # CloudWatch log group names allow alphanumeric, underscore, hyphen, slash, hash, and dot.
-  sanitized_stage_name = regexreplace(var.stage_name, "[^0-9A-Za-z_/#.-]", "-")
+  sanitized_stage_name = replace(var.stage_name, "/[^0-9A-Za-z_/#.-]/", "-")
 }
 
 resource "aws_apigatewayv2_api" "this" {
