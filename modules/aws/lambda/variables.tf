@@ -142,3 +142,9 @@ variable "assume_role_services" {
     error_message = "assume_role_services must include lambda.amazonaws.com."
   }
 }
+
+variable "tags" {
+  description = "Additional tags to apply to the Lambda function and related resources."
+  type        = map(string)
+  default     = {}
+}

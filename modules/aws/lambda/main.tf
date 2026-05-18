@@ -46,7 +46,7 @@ resource "aws_kms_key" "this" {
   deletion_window_in_days = 7
   enable_key_rotation     = true
   policy                  = local.kms_key_policy_json
-  tags                    = merge(local.common_tags, { rg = "security" })
+  tags                    = merge(local.common_tags, var.tags, { rg = "security" })
 }
 
 resource "aws_kms_alias" "this" {
@@ -59,7 +59,7 @@ resource "aws_kms_alias" "this" {
 resource "aws_iam_role" "this" {
   name               = local.role_name
   assume_role_policy = local.assume_role_policy
-  tags               = merge(local.common_tags, { rg = "security" })
+  tags               = merge(local.common_tags, var.tags, { rg = "security" })
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_logging" {
@@ -82,7 +82,7 @@ resource "aws_iam_policy" "deployment_source_access" {
       }
     ]
   })
-  tags = merge(local.common_tags, { rg = "security" })
+  tags = merge(local.common_tags, var.tags, { rg = "security" })
 }
 
 resource "aws_iam_role_policy_attachment" "deployment_source_access" {
@@ -111,7 +111,7 @@ resource "aws_iam_policy" "s3_required_access" {
       }
     ]
   })
-  tags = merge(local.common_tags, { rg = "security" })
+  tags = merge(local.common_tags, var.tags, { rg = "security" })
 }
 
 resource "aws_iam_role_policy_attachment" "s3_required_access" {
@@ -152,7 +152,7 @@ resource "aws_lambda_function" "this" {
     mode = var.tracing_mode
   }
 
-  tags = merge(local.common_tags, { rg = "compute" })
+  tags = merge(local.common_tags, var.tags, { rg = "compute" })
 
   depends_on = [
     aws_iam_role_policy_attachment.lambda_logging,
@@ -166,7 +166,7 @@ resource "aws_secretsmanager_secret" "this" {
   name        = "${var.app_name}-${var.function_name}-${var.deployment_environment}-secrets"
   description = "Secrets for ${var.function_name} Lambda function in ${var.deployment_environment} environment"
   kms_key_id  = local.kms_key_arn
-  tags        = merge(local.common_tags, { purpose = "lambda-secrets", rg = "security" })
+  tags        = merge(local.common_tags, var.tags, { purpose = "lambda-secrets", rg = "security" })
 }
 
 resource "aws_secretsmanager_secret_version" "this" {
@@ -211,7 +211,7 @@ resource "aws_iam_policy" "lambda_secrets_access" {
       }
     ]
   })
-  tags = merge(local.common_tags, { rg = "security" })
+  tags = merge(local.common_tags, var.tags, { rg = "security" })
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_secrets_access" {
@@ -254,7 +254,7 @@ resource "aws_iam_policy" "backend_user_secrets_access" {
       }
     ]
   })
-  tags = merge(local.common_tags, { rg = "security" })
+  tags = merge(local.common_tags, var.tags, { rg = "security" })
 }
 
 resource "aws_iam_user_policy_attachment" "backend_user_secrets_access" {
@@ -270,3 +270,4 @@ resource "aws_lambda_function_url" "this" {
   function_name      = aws_lambda_function.this.function_name
   authorization_type = var.url_authorization_type
 }
+
