@@ -36,7 +36,7 @@ resource "aws_kms_key" "this" {
   deletion_window_in_days = 7
   enable_key_rotation     = true
   policy                  = local.kms_key_policy_json
-  tags                    = local.common_tags
+  tags                    = merge(local.common_tags, var.tags)
 }
 
 resource "aws_kms_alias" "this" {

@@ -24,3 +24,9 @@ variable "kms_key_policy_json" {
   type        = string
   default     = null
 }
+
+variable "tags" {
+  description = "Additional tags to apply to the certificate."
+  type        = map(string)
+  default     = {}
+}
