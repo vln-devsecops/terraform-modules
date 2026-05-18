@@ -27,6 +27,7 @@ data "aws_iam_policy_document" "kms" {
 
 resource "aws_s3_bucket" "this" {
   bucket = "${var.app_name}-deployment-bucket-${var.deployment_environment}-${var.deployment_region}"
+  tags   = merge(local.common_tags, var.tags)
 }
 
 resource "aws_kms_key" "this" {
