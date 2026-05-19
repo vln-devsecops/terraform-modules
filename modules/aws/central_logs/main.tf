@@ -95,7 +95,9 @@ resource "aws_s3_bucket_policy" "logs" {
               "aws:SecureTransport" = "false"
             }
           }
-        },
+        }
+      ],
+      var.deployment_mode == "central" ? [
         {
           Sid    = "AllowCrossAccountPutObject"
           Effect = "Allow"
@@ -109,9 +111,9 @@ resource "aws_s3_bucket_policy" "logs" {
               "s3:x-amz-acl" = "bucket-owner-full-control"
             }
           }
-        },
-      ],
-      var.enable_cloudtrail ? [
+        }
+      ] : [],
+      var.deployment_mode == "central" && var.enable_cloudtrail ? [
         {
           Sid    = "AllowCloudTrailDelivery"
           Effect = "Allow"
@@ -135,7 +137,7 @@ resource "aws_s3_bucket_policy" "logs" {
 }
 
 resource "aws_cloudtrail" "central" {
-  count = var.enable_cloudtrail ? 1 : 0
+  count = var.deployment_mode == "central" && var.enable_cloudtrail ? 1 : 0
 
   name                          = var.cloudtrail_name
   s3_bucket_name                = aws_s3_bucket.logs.id

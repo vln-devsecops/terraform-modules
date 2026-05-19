@@ -20,5 +20,5 @@ output "kms_key_id" {
 
 output "cloudtrail_arn" {
   description = "ARN of the CloudTrail trail, or null when enable_cloudtrail is false."
-  value       = var.enable_cloudtrail ? aws_cloudtrail.central[0].arn : null
+  value       = var.deployment_mode == "central" && var.enable_cloudtrail ? aws_cloudtrail.central[0].arn : null
 }
