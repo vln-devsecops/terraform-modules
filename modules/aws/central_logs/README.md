@@ -68,13 +68,14 @@ module "cloudfront_logs" {
 
 ## Outputs
 
-| Name             | Description                                                                              |
-| ---------------- | ---------------------------------------------------------------------------------------- |
-| `bucket_name`    | Name of the central logs S3 bucket.                                                      |
-| `bucket_arn`     | ARN of the central logs S3 bucket.                                                       |
-| `kms_key_arn`    | ARN of the KMS key used for bucket encryption, or `null` when `create_kms_key` is false. |
-| `kms_key_id`     | Key ID of the KMS key, or `null` when `create_kms_key` is false.                         |
-| `cloudtrail_arn` | ARN of the CloudTrail trail, or `null` when `enable_cloudtrail` is false.                |
+| Name                 | Description                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `bucket_name`        | Name of the central logs S3 bucket.                                                      |
+| `bucket_arn`         | ARN of the central logs S3 bucket.                                                       |
+| `bucket_domain_name` | Bucket domain name, for use as a CloudFront access log target.                           |
+| `kms_key_arn`        | ARN of the KMS key used for bucket encryption, or `null` when `create_kms_key` is false. |
+| `kms_key_id`         | Key ID of the KMS key, or `null` when `create_kms_key` is false.                         |
+| `cloudtrail_arn`     | ARN of the CloudTrail trail, or `null` when `enable_cloudtrail` is false.                |
 
 ## Notes
 

@@ -8,6 +8,11 @@ output "bucket_arn" {
   value       = aws_s3_bucket.logs.arn
 }
 
+output "bucket_domain_name" {
+  description = "Bucket domain name of the central logs S3 bucket, for use as an access log target."
+  value       = aws_s3_bucket.logs.bucket_domain_name
+}
+
 output "kms_key_arn" {
   description = "ARN of the KMS key used for bucket encryption, or null when create_kms_key is false."
   value       = var.create_kms_key ? aws_kms_key.logs[0].arn : null
