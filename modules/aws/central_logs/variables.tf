@@ -54,3 +54,25 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "deployment_mode" {
+  description = "Deployment mode for the central_logs module. Allowed values: 'central' (default), 'client'."
+  type        = string
+  default     = "central"
+  validation {
+    condition     = contains(["central", "client"], var.deployment_mode)
+    error_message = "deployment_mode must be one of: central, client."
+  }
+}
+
+# Guardrail: Forbid enable_cloudtrail=true when deployment_mode=client
+locals {
+  _cloudtrail_client_mode_invalid = var.deployment_mode == "client" && var.enable_cloudtrail
+}
+
+check "cloudtrail_client_mode_incompatible" {
+  assert {
+    condition     = !local._cloudtrail_client_mode_invalid
+    error_message = "enable_cloudtrail cannot be true when deployment_mode is 'client'."
+  }
+}

@@ -110,3 +110,58 @@ run "accepts_multiple_allowed_accounts" {
     error_message = "bucket_arn should be set when multiple allowed_account_ids are provided."
   }
 }
+
+# --- TDD: deployment_mode variable ---
+
+run "defaults_to_central_mode" {
+  command = plan
+  variables {
+    bucket_name         = "my-central-logs"
+    allowed_account_ids = ["111111111111"]
+  }
+  assert {
+    condition     = var.deployment_mode == null || var.deployment_mode == "central"
+    error_message = "deployment_mode should default to 'central'."
+  }
+}
+
+run "explicit_central_mode" {
+  command = plan
+  variables {
+    bucket_name         = "my-central-logs"
+    allowed_account_ids = ["111111111111"]
+    deployment_mode     = "central"
+  }
+  assert {
+    condition     = var.deployment_mode == "central"
+    error_message = "deployment_mode should be 'central' when set explicitly."
+  }
+}
+
+run "client_mode" {
+  command = plan
+  variables {
+    bucket_name         = "my-client-logs"
+    allowed_account_ids = ["111111111111"]
+    deployment_mode     = "client"
+  }
+  assert {
+    condition     = var.deployment_mode == "client"
+    error_message = "deployment_mode should be 'client' when set."
+  }
+}
+
+run "forbid_cloudtrail_in_client_mode" {
+  command = plan
+  #expect_fail = true
+  variables {
+    bucket_name         = "my-client-logs"
+    allowed_account_ids = ["111111111111"]
+    deployment_mode     = "client"
+    enable_cloudtrail   = true
+  }
+  assert {
+    condition     = contains(stderr, "enable_cloudtrail cannot be true when deployment_mode is 'client'")
+    error_message = "Should fail if enable_cloudtrail is true in client mode."
+  }
+}
