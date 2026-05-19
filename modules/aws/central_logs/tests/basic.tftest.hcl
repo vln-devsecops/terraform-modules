@@ -34,6 +34,7 @@ run "creates_bucket_with_defaults" {
   variables {
     bucket_name         = "my-central-logs"
     allowed_account_ids = ["111111111111"]
+    deployment_mode     = "central"
   }
 
   assert {
@@ -63,6 +64,7 @@ run "sse_s3_when_kms_disabled" {
   variables {
     bucket_name         = "my-central-logs"
     allowed_account_ids = ["111111111111"]
+    deployment_mode     = "central"
     create_kms_key      = false
   }
 
@@ -83,6 +85,7 @@ run "cloudtrail_arn_when_enabled" {
   variables {
     bucket_name         = "my-central-logs"
     allowed_account_ids = ["111111111111"]
+    deployment_mode     = "central"
     enable_cloudtrail   = true
   }
 
@@ -103,6 +106,7 @@ run "accepts_multiple_allowed_accounts" {
   variables {
     bucket_name         = "my-central-logs"
     allowed_account_ids = ["111111111111", "222222222222"]
+    deployment_mode     = "central"
   }
 
   assert {
@@ -116,6 +120,7 @@ run "accepts_multiple_allowed_accounts" {
 run "defaults_to_central_mode" {
   command = plan
   variables {
+    deployment_mode     = "central"
     bucket_name         = "my-central-logs"
     allowed_account_ids = ["111111111111"]
   }
@@ -132,9 +137,13 @@ run "explicit_central_mode" {
     allowed_account_ids = ["111111111111"]
     deployment_mode     = "central"
   }
+
   assert {
-    condition     = var.deployment_mode == "central"
-    error_message = "deployment_mode should be 'central' when set explicitly."
+    condition = contains(
+      [for statement in jsondecode(aws_s3_bucket_policy.logs.policy).Statement : statement.Sid],
+      "AllowCrossAccountPutObject"
+    )
+    error_message = "central mode should include AllowCrossAccountPutObject in the bucket policy."
   }
 }
 
@@ -145,23 +154,31 @@ run "client_mode" {
     allowed_account_ids = ["111111111111"]
     deployment_mode     = "client"
   }
+
   assert {
-    condition     = var.deployment_mode == "client"
-    error_message = "deployment_mode should be 'client' when set."
+    condition = !contains(
+      [for statement in jsondecode(aws_s3_bucket_policy.logs.policy).Statement : statement.Sid],
+      "AllowCrossAccountPutObject"
+    )
+    error_message = "client mode should not include AllowCrossAccountPutObject in the bucket policy."
+  }
+
+  assert {
+    condition     = length(aws_cloudtrail.central) == 0
+    error_message = "CloudTrail should not be created in client mode."
   }
 }
 
 run "forbid_cloudtrail_in_client_mode" {
   command = plan
-  #expect_fail = true
+  expect_failures = [
+    check.cloudtrail_client_mode_incompatible,
+  ]
+
   variables {
     bucket_name         = "my-client-logs"
     allowed_account_ids = ["111111111111"]
     deployment_mode     = "client"
     enable_cloudtrail   = true
-  }
-  assert {
-    condition     = contains(stderr, "enable_cloudtrail cannot be true when deployment_mode is 'client'")
-    error_message = "Should fail if enable_cloudtrail is true in client mode."
   }
 }

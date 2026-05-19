@@ -56,9 +56,8 @@ variable "tags" {
 }
 
 variable "deployment_mode" {
-  description = "Deployment mode for the central_logs module. Allowed values: 'central' (default), 'client'."
+  description = "Deployment mode for the central_logs module. Allowed values: 'central', 'client'."
   type        = string
-  default     = "central"
   validation {
     condition     = contains(["central", "client"], var.deployment_mode)
     error_message = "deployment_mode must be one of: central, client."
