@@ -12,14 +12,19 @@ resource "aws_acm_certificate" "this" {
 
 resource "aws_route53_record" "validation" {
   for_each = {
-    for dvo in aws_acm_certificate.this.domain_validation_options : dvo.domain_name => dvo
+    for dvo in aws_acm_certificate.this.domain_validation_options :
+    "${dvo.resource_record_name}/${dvo.resource_record_type}" => {
+      name  = dvo.resource_record_name
+      type  = dvo.resource_record_type
+      value = dvo.resource_record_value
+    }...
   }
 
   zone_id = var.route53_zone_id
-  name    = each.value.resource_record_name
-  type    = each.value.resource_record_type
+  name    = each.value[0].name
+  type    = each.value[0].type
   ttl     = 60
-  records = [each.value.resource_record_value]
+  records = [each.value[0].value]
 }
 
 resource "aws_acm_certificate_validation" "this" {

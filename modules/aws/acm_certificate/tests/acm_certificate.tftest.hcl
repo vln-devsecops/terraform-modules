@@ -4,12 +4,20 @@ mock_provider "aws" {
   mock_resource "aws_acm_certificate" {
     defaults = {
       arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
-      domain_validation_options = [{
-        domain_name           = "example.com"
-        resource_record_name  = "_abc123.example.com."
-        resource_record_type  = "CNAME"
-        resource_record_value = "_def456.acm.amazonaws.com."
-      }]
+      domain_validation_options = [
+        {
+          domain_name           = "example.com"
+          resource_record_name  = "_abc123.example.com."
+          resource_record_type  = "CNAME"
+          resource_record_value = "_def456.acm.amazonaws.com."
+        },
+        {
+          domain_name           = "*.example.com"
+          resource_record_name  = "_abc123.example.com."
+          resource_record_type  = "CNAME"
+          resource_record_value = "_def456.acm.amazonaws.com."
+        }
+      ]
       status = "PENDING_VALIDATION"
     }
   }
@@ -45,7 +53,7 @@ run "single_domain_creates_certificate_and_validation_records" {
 
   assert {
     condition     = length(aws_route53_record.validation) == 1
-    error_message = "Expected exactly one Route 53 validation record for a single domain."
+    error_message = "Expected exactly one Route 53 validation record when ACM returns duplicate apex/wildcard validation records."
   }
 
   assert {
@@ -110,7 +118,7 @@ run "skip_validation_wait_creates_no_validation_resource" {
 
   assert {
     condition     = length(aws_route53_record.validation) == 1
-    error_message = "Route 53 validation records should still be created even when wait_for_validation is false."
+    error_message = "Exactly one deduplicated Route 53 validation record should be created even when wait_for_validation is false."
   }
 }
 
