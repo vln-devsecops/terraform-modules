@@ -1,8 +1,14 @@
 locals {
   effective_source_object_key = coalesce(var.source_object_key, "${var.app_name}-${var.function_name}.zip")
+  source_archive_exists       = contains(data.aws_s3_objects.source_archive_probe.keys, local.effective_source_object_key)
   kms_key_arn                 = coalesce(var.kms_key_arn, aws_kms_key.this[0].arn)
   kms_key_policy_json         = var.kms_key_policy_json != null ? var.kms_key_policy_json : data.aws_iam_policy_document.kms.json
   role_name                   = "iam_for_lambda_${var.function_name}_${var.deployment_environment}_${substr(md5(var.app_name), 0, 8)}"
+  lambda_filename             = local.source_archive_exists ? null : data.archive_file.echo_lambda[0].output_path
+  lambda_source_code_hash     = local.source_archive_exists ? data.aws_s3_object.source_archive[0].checksum_sha256 : data.archive_file.echo_lambda[0].output_base64sha256
+  lambda_s3_bucket            = local.source_archive_exists ? var.source_bucket_id : null
+  lambda_s3_key               = local.source_archive_exists ? local.effective_source_object_key : null
+  lambda_s3_object_version    = local.source_archive_exists ? data.aws_s3_object.source_archive[0].version_id : null
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -68,6 +74,8 @@ resource "aws_iam_role_policy_attachment" "lambda_logging" {
 }
 
 resource "aws_iam_policy" "deployment_source_access" {
+  count = local.source_archive_exists ? 1 : 0
+
   name        = "${var.app_name}_${var.function_name}_${var.deployment_environment}_lambda_deployment_s3_source_access_policy"
   description = "Allows Lambda function to read its deployment archive from S3"
   policy = jsonencode({
@@ -86,13 +94,40 @@ resource "aws_iam_policy" "deployment_source_access" {
 }
 
 resource "aws_iam_role_policy_attachment" "deployment_source_access" {
+  count = local.source_archive_exists ? 1 : 0
+
   role       = aws_iam_role.this.name
-  policy_arn = aws_iam_policy.deployment_source_access.arn
+  policy_arn = aws_iam_policy.deployment_source_access[0].arn
+}
+
+data "aws_s3_objects" "source_archive_probe" {
+  bucket = var.source_bucket_id
+  prefix = local.effective_source_object_key
 }
 
 data "aws_s3_object" "source_archive" {
+  count  = local.source_archive_exists ? 1 : 0
   bucket = var.source_bucket_id
   key    = local.effective_source_object_key
+}
+
+data "archive_file" "echo_lambda" {
+  count       = local.source_archive_exists ? 0 : 1
+  type        = "zip"
+  output_path = "${path.module}/.terraform/echo-lambda.zip"
+
+  source {
+    content  = <<-EOT
+      exports.handler = async (event) => ({
+        statusCode: 200,
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(event)
+      });
+    EOT
+    filename = "index.js"
+  }
 }
 
 resource "aws_iam_policy" "s3_required_access" {
@@ -137,10 +172,11 @@ resource "aws_lambda_function" "this" {
   memory_size   = var.memory_size
   publish       = var.publish
 
-  s3_bucket         = var.source_bucket_id
-  s3_key            = local.effective_source_object_key
-  source_code_hash  = data.aws_s3_object.source_archive.checksum_sha256
-  s3_object_version = data.aws_s3_object.source_archive.version_id
+  filename          = local.lambda_filename
+  s3_bucket         = local.lambda_s3_bucket
+  s3_key            = local.lambda_s3_key
+  source_code_hash  = local.lambda_source_code_hash
+  s3_object_version = local.lambda_s3_object_version
 
   environment {
     variables = var.environment
@@ -156,7 +192,6 @@ resource "aws_lambda_function" "this" {
 
   depends_on = [
     aws_iam_role_policy_attachment.lambda_logging,
-    aws_iam_role_policy_attachment.deployment_source_access,
   ]
 }
 
