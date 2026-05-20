@@ -7,6 +7,16 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_s3_objects" {
+    defaults = {
+      keys = [
+        "sampleapp-origin-response.zip",
+        "lambdas/token-service/release.zip",
+        "sampleapp-contact-form.zip",
+      ]
+    }
+  }
+
   mock_resource "aws_kms_key" {
     defaults = {
       arn    = "arn:aws:kms:us-east-1:123456789012:key/lambda"
@@ -41,6 +51,15 @@ mock_provider "aws" {
   }
 }
 
+mock_provider "archive" {
+  mock_data "archive_file" {
+    defaults = {
+      output_path         = "/tmp/echo-lambda.zip"
+      output_base64sha256 = "ZWNoby1oYXNo"
+    }
+  }
+}
+
 run "doxchange_defaults_preserve_archive_and_runtime_contract" {
   command = plan
 
@@ -61,6 +80,11 @@ run "doxchange_defaults_preserve_archive_and_runtime_contract" {
   assert {
     condition     = aws_lambda_function.this.s3_key == "sampleapp-origin-response.zip"
     error_message = "Default deployment archive naming changed unexpectedly."
+  }
+
+  assert {
+    condition     = aws_lambda_function.this.filename == null && aws_iam_policy.deployment_source_access[0].name == "sampleapp_origin-response_prod_lambda_deployment_s3_source_access_policy"
+    error_message = "S3-backed deployments should not fall back to the echo package."
   }
 
   assert {
@@ -189,6 +213,11 @@ run "doxchange_extensions_cover_secrets_edge_trust_and_extra_s3_access" {
   }
 
   assert {
+    condition     = length(aws_iam_role_policy_attachment.deployment_source_access) == 1
+    error_message = "S3-backed deployments should attach source access exactly once."
+  }
+
+  assert {
     condition     = aws_iam_user_policy_attachment.backend_user_secrets_access[0].user == "backend-user"
     error_message = "Backend-user secret access attachment changed unexpectedly."
   }
@@ -210,5 +239,39 @@ run "doxchange_extensions_cover_secrets_edge_trust_and_extra_s3_access" {
   assert {
     condition     = aws_iam_role_policy_attachment.s3_required_access["list_frontend"].role == output.role_name
     error_message = "Extra S3 access policy attachment changed unexpectedly."
+  }
+}
+
+run "missing_archive_uses_echo_fallback_and_skips_s3_dependent_resources" {
+  command = plan
+
+  variables {
+    app_name               = "sampleapp"
+    deployment_environment = "prod"
+    function_name          = "origin-response"
+    source_bucket_arn      = "arn:aws:s3:::deployment-sampleapp"
+    source_bucket_id       = "deployment-sampleapp"
+    kms_key_policy_json    = jsonencode({ Version = "2012-10-17", Statement = [] })
+    source_object_key      = "lambdas/missing/release.zip"
+  }
+
+  assert {
+    condition     = aws_lambda_function.this.filename == "./.terraform/echo-lambda.zip"
+    error_message = "Missing archives should fall back to the generated echo package."
+  }
+
+  assert {
+    condition     = aws_lambda_function.this.s3_bucket == null && aws_lambda_function.this.s3_key == null && aws_lambda_function.this.s3_object_version == null
+    error_message = "Fallback Lambdas should not keep S3 source arguments."
+  }
+
+  assert {
+    condition     = aws_lambda_function.this.source_code_hash == "ZWNoby1oYXNo"
+    error_message = "Fallback Lambdas should use the generated archive hash."
+  }
+
+  assert {
+    condition     = length(aws_iam_policy.deployment_source_access) == 0 && length(aws_iam_role_policy_attachment.deployment_source_access) == 0
+    error_message = "Missing archives should skip S3 source access resources."
   }
 }
