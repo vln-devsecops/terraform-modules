@@ -42,7 +42,7 @@ resource "aws_cloudfront_origin_access_control" "site" {
 
 resource "aws_cloudfront_function" "viewer_request" {
   name    = "${replace(var.site_name, ".", "-")}-viewer-request"
-  runtime = "cloudfront-js-1.0"
+  runtime = "cloudfront-js-2.0"
   publish = true
   comment = "Viewer-request handling for ${var.site_name}"
   code    = local.viewer_request_code
