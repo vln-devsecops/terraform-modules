@@ -13,6 +13,12 @@ variable "deployment_region" {
   type        = string
 }
 
+variable "bucket_name_suffix" {
+  description = "Optional suffix to append to the bucket name for unguessable naming (e.g., a random string)."
+  type        = string
+  default     = ""
+}
+
 variable "kms_key_arn" {
   description = "Optional existing KMS key ARN to use for bucket encryption. When omitted, the module creates a dedicated CMK."
   type        = string
