@@ -1,6 +1,12 @@
 variable "site_name" {
-  description = "Fully qualified hostname for the static site."
+  description = "Fully qualified hostname for the static site (used for CloudFront alias and resource naming)."
   type        = string
+}
+
+variable "bucket_name" {
+  description = "S3 bucket name for the static site content. If not provided, defaults to site_name."
+  type        = string
+  default     = ""
 }
 
 variable "route53_zone_id" {

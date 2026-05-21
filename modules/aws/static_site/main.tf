@@ -1,4 +1,5 @@
 locals {
+  actual_bucket_name = var.bucket_name != "" ? var.bucket_name : var.site_name
   common_tags = merge(var.tags, {
     site = var.site_name
   })
@@ -18,7 +19,7 @@ locals {
 
 # trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket" "site" {
-  bucket        = var.site_name
+  bucket        = local.actual_bucket_name
   force_destroy = var.force_destroy
   tags          = merge(local.common_tags, { rg = "storage" })
 }
