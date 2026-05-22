@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CHECKOV_VERSION: "3.2.525"
-      CHECKOV_SKIP_CHECKS: "CKV_AWS_18,CKV_AWS_109,CKV_AWS_111,CKV_AWS_115,CKV_AWS_116,CKV_AWS_117,CKV_AWS_144,CKV_AWS_272,CKV_AWS_356,CKV2_AWS_57,CKV2_AWS_61,CKV2_AWS_62,CKV_AWS_21,CKV_AWS_68,CKV_AWS_86,CKV_AWS_145,CKV_AWS_310,CKV_AWS_374,CKV2_AWS_32,CKV2_AWS_47,CKV2_AWS_12,CKV_AWS_130,CKV2_AWS_11"
+      CHECKOV_SKIP_CHECKS: "CKV_AWS_18,CKV_AWS_109,CKV_AWS_111,CKV_AWS_115,CKV_AWS_116,CKV_AWS_117,CKV_AWS_144,CKV_AWS_272,CKV_AWS_356,CKV2_AWS_57,CKV2_AWS_61,CKV2_AWS_62,CKV_AWS_21,CKV_AWS_68,CKV_AWS_70,CKV_AWS_86,CKV_AWS_145,CKV_AWS_310,CKV_AWS_374,CKV2_AWS_10,CKV2_AWS_32,CKV2_AWS_47,CKV2_AWS_12,CKV2_AWS_11,CKV2_AWS_64,CKV_AWS_130"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -61,10 +61,12 @@ jobs:
             echo "- Lambda VPC attachment, reserved concurrency, DLQ wiring, and code signing"
             echo "- secret rotation workflow ownership"
             echo "- standard root-access KMS key policy delegation"
+            echo "- CloudTrail CloudWatch Logs integration remains optional for this shared bucket module"
             echo "- static site CloudFront WAF, geo restriction, access logging, response headers policy, and origin failover"
             echo "- static site S3 KMS encryption and versioning (OAC-protected public content, not sensitive data)"
             echo "- VPC flow logs not enabled (callers that require flow logs must add them outside the module)"
             echo "- VPC public subnets auto-assign public IPs (intentional for runner and public-access workloads)"
+            echo "- CKV_AWS_70 is skipped while Checkov 3.2.525 crashes on the generated S3 bucket policy document"
           } >> "${GITHUB_STEP_SUMMARY}"
 
   discover:
