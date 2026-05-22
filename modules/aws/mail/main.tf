@@ -1,12 +1,13 @@
 locals {
+  effective_domain_name         = trimsuffix(var.domain_name, ".")
   effective_ses_inbound_region  = coalesce(var.ses_inbound_region, var.deployment_region)
   effective_ses_feedback_region = coalesce(var.ses_feedback_region, var.deployment_region)
   effective_dmarc_policy        = coalesce(var.dmarc_policy, "reject")
-  effective_dmarc_report_uri    = coalesce(var.dmarc_report_uri, "mailto:dmarc-reports@${var.domain_name}")
+  effective_dmarc_report_uri    = coalesce(var.dmarc_report_uri, "mailto:dmarc-reports@${local.effective_domain_name}")
 }
 
 resource "aws_ses_configuration_set" "this" {
-  name = "ascs-${replace(var.domain_name, ".", "_")}-${var.deployment_environment}"
+  name = "ascs-${replace(local.effective_domain_name, ".", "_")}-${var.deployment_environment}"
 
   delivery_options {
     tls_policy = "Require"
@@ -22,12 +23,12 @@ resource "aws_ses_configuration_set" "this" {
 }
 
 resource "aws_ses_domain_identity" "identity" {
-  domain = var.domain_name
+  domain = local.effective_domain_name
 }
 
 resource "aws_route53_record" "identity_amazonses_verification_record" {
   zone_id = var.route53_zone_id
-  name    = "_amazonses.${var.domain_name}"
+  name    = "_amazonses.${local.effective_domain_name}"
   type    = "TXT"
   ttl     = 600
   records = [aws_ses_domain_identity.identity.verification_token]
@@ -48,7 +49,7 @@ resource "aws_ses_domain_dkim" "this" {
 resource "aws_route53_record" "dkim_record" {
   count   = 3
   zone_id = var.route53_zone_id
-  name    = "${aws_ses_domain_dkim.this.dkim_tokens[count.index]}._domainkey.${var.domain_prefix}"
+  name    = "${aws_ses_domain_dkim.this.dkim_tokens[count.index]}._domainkey.${local.effective_domain_name}"
   type    = "CNAME"
   ttl     = 600
   records = ["${aws_ses_domain_dkim.this.dkim_tokens[count.index]}.dkim.amazonses.com"]
@@ -63,7 +64,7 @@ resource "aws_ses_domain_mail_from" "this" {
 
 resource "aws_route53_record" "bounce_spf_record" {
   zone_id = var.route53_zone_id
-  name    = "bounce.${var.domain_name}"
+  name    = "bounce.${local.effective_domain_name}"
   type    = "TXT"
   ttl     = 300
   records = ["v=spf1 include:amazonses.com ~all"]
@@ -71,7 +72,7 @@ resource "aws_route53_record" "bounce_spf_record" {
 
 resource "aws_route53_record" "bounce_mx_record" {
   zone_id = var.route53_zone_id
-  name    = "bounce.${var.domain_name}"
+  name    = "bounce.${local.effective_domain_name}"
   type    = "MX"
   ttl     = 300
   records = ["10 feedback-smtp.${local.effective_ses_feedback_region}.amazonses.com"]
@@ -79,7 +80,7 @@ resource "aws_route53_record" "bounce_mx_record" {
 
 resource "aws_route53_record" "mx_record" {
   zone_id = var.route53_zone_id
-  name    = var.domain_prefix
+  name    = local.effective_domain_name
   type    = "MX"
   ttl     = 300
   records = ["1 inbound-smtp.${local.effective_ses_inbound_region}.amazonaws.com"]
@@ -89,7 +90,7 @@ resource "aws_route53_record" "mx_record" {
 
 resource "aws_route53_record" "dmarc_record" {
   zone_id = var.route53_zone_id
-  name    = "_dmarc.${var.domain_name}"
+  name    = "_dmarc.${local.effective_domain_name}"
   type    = "TXT"
   ttl     = 300
   records = ["v=DMARC1; p=${local.effective_dmarc_policy}; rua=${local.effective_dmarc_report_uri}; aspf=r; adkim=r"]
