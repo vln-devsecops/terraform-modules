@@ -16,12 +16,6 @@ variable "domain_name" {
   default     = "auth.example.com"
 }
 
-variable "domain_prefix" {
-  description = "Subdomain label used for Route53 records."
-  type        = string
-  default     = "auth"
-}
-
 variable "route53_zone_id" {
   description = "Route53 hosted zone ID for the example DNS records."
   type        = string
