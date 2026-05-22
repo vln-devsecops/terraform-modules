@@ -19,7 +19,6 @@ module "mail" {
   deployment_environment = var.deployment_environment
   deployment_region      = var.aws_region
   domain_name            = var.domain_name
-  domain_prefix          = var.domain_prefix
   route53_zone_id        = var.route53_zone_id
 }
 

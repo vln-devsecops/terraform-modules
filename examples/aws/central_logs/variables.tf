@@ -21,3 +21,9 @@ variable "enable_cloudtrail" {
   type        = bool
   default     = false
 }
+
+variable "deployment_mode" {
+  description = "Deployment mode for the central logs module: central or client."
+  type        = string
+  default     = "central"
+}

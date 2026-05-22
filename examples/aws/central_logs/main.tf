@@ -18,6 +18,7 @@ module "central_logs" {
 
   bucket_name         = var.bucket_name
   allowed_account_ids = var.allowed_account_ids
+  deployment_mode     = var.deployment_mode
   enable_cloudtrail   = var.enable_cloudtrail
 
   tags = {
