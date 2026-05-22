@@ -83,8 +83,13 @@ run "doxchange_defaults_preserve_archive_and_runtime_contract" {
   }
 
   assert {
-    condition     = aws_lambda_function.this.filename == null && aws_iam_policy.deployment_source_access[0].name == "sampleapp_origin-response_prod_lambda_deployment_s3_source_access_policy"
+    condition     = aws_lambda_function.this.filename == null && aws_iam_policy.deployment_source_access.name == "sampleapp_origin-response_prod_lambda_deployment_s3_source_access_policy"
     error_message = "S3-backed deployments should not fall back to the echo package."
+  }
+
+  assert {
+    condition     = aws_lambda_function.this.s3_bucket == "deployment-sampleapp" && aws_lambda_function.this.s3_object_version == null
+    error_message = "S3-backed deployments should stay on the S3 path and leave s3_object_version unset until apply."
   }
 
   assert {
@@ -151,6 +156,11 @@ run "explicit_source_key_url_and_policy_attachments_work_together" {
   }
 
   assert {
+    condition     = aws_lambda_function.this.filename == null && aws_lambda_function.this.s3_bucket == "deployment-sampleapp" && aws_lambda_function.this.s3_object_version == null
+    error_message = "Explicit S3-backed deployments should keep the plan-safe S3 path without forcing local archive metadata."
+  }
+
+  assert {
     condition     = aws_lambda_function_url.this[0].authorization_type == "AWS_IAM" && output.url == "https://example.lambda-url.us-east-1.on.aws/"
     error_message = "Function URL configuration changed unexpectedly."
   }
@@ -213,7 +223,7 @@ run "doxchange_extensions_cover_secrets_edge_trust_and_extra_s3_access" {
   }
 
   assert {
-    condition     = length(aws_iam_role_policy_attachment.deployment_source_access) == 1
+    condition     = aws_iam_role_policy_attachment.deployment_source_access.role == output.role_name
     error_message = "S3-backed deployments should attach source access exactly once."
   }
 
@@ -271,7 +281,12 @@ run "missing_archive_uses_echo_fallback_and_skips_s3_dependent_resources" {
   }
 
   assert {
-    condition     = length(aws_iam_policy.deployment_source_access) == 0 && length(aws_iam_role_policy_attachment.deployment_source_access) == 0
-    error_message = "Missing archives should skip S3 source access resources."
+    condition     = aws_iam_policy.deployment_source_access.name == "sampleapp_origin-response_prod_lambda_deployment_s3_source_access_policy" && aws_iam_role_policy_attachment.deployment_source_access.role == output.role_name
+    error_message = "Fallback Lambdas should still wire the deployment source access policy without switching away from the no-op package."
+  }
+
+  assert {
+    condition     = aws_lambda_function.this.publish == true
+    error_message = "Fallback behavior should preserve the normal Lambda defaults."
   }
 }
