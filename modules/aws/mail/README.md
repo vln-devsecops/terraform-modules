@@ -9,7 +9,7 @@ Creates an SES domain-mail configuration with Route53 records for identity verif
 | `deployment_environment` | Deployment environment name such as dev, staging, or prod. | `string` |
 | `deployment_region` | Primary AWS region associated with this mail configuration. | `string` |
 | `domain_name` | Fully qualified domain name for the SES identity. | `string` |
-| `domain_prefix` | Subdomain label used for Route53 records within the hosted zone. | `string` |
+| `domain_prefix` | Deprecated legacy input. Route53 record names are derived from `domain_name`; this value is ignored and retained only for compatibility. | `string` |
 | `route53_zone_id` | Route53 hosted zone ID for the DNS records. | `string` |
 | `ses_inbound_region` | Optional inbound SMTP region override. | `string` |
 | `ses_feedback_region` | Optional MAIL FROM feedback SMTP region override. | `string` |
@@ -34,7 +34,6 @@ module "mail" {
   deployment_environment = "dev"
   deployment_region      = "us-east-1"
   domain_name            = "auth.example.com"
-  domain_prefix          = "auth"
   route53_zone_id        = "Z1234567890"
 }
 ```

@@ -14,8 +14,10 @@ variable "domain_name" {
 }
 
 variable "domain_prefix" {
-  description = "Subdomain label used for Route53 records within the hosted zone."
+  description = "Deprecated legacy input kept for backward compatibility. Route53 record names are derived from domain_name."
   type        = string
+  default     = null
+  nullable    = true
 }
 
 variable "route53_zone_id" {
