@@ -13,13 +13,6 @@ variable "domain_name" {
   type        = string
 }
 
-variable "domain_prefix" {
-  description = "Deprecated legacy input kept for backward compatibility. Route53 record names are derived from domain_name."
-  type        = string
-  default     = null
-  nullable    = true
-}
-
 variable "route53_zone_id" {
   description = "Route53 hosted zone ID where the mail DNS records should be created."
   type        = string
