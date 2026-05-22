@@ -9,7 +9,6 @@ run "mail_contract_uses_expected_defaults" {
     deployment_environment = "dev"
     deployment_region      = "ca-central-1"
     domain_name            = "auth.example.com"
-    domain_prefix          = "auth"
     route53_zone_id        = "Z1234567890"
   }
 
@@ -46,7 +45,6 @@ run "mail_contract_honors_region_and_dmarc_overrides" {
     deployment_environment = "prod"
     deployment_region      = "eu-west-1"
     domain_name            = "notify.example.com"
-    domain_prefix          = "notify"
     route53_zone_id        = "Z1234567890"
     ses_inbound_region     = "us-east-2"
     ses_feedback_region    = "us-east-1"
@@ -82,7 +80,6 @@ run "mail_contract_enables_tracking_only_when_requested" {
     deployment_environment   = "stage"
     deployment_region        = "us-east-1"
     domain_name              = "mail.example.com"
-    domain_prefix            = "mail"
     route53_zone_id          = "Z1234567890"
     tracking_redirect_domain = "click.mail.example.com"
   }
@@ -100,13 +97,12 @@ run "mail_contract_uses_domain_name_for_record_names" {
     deployment_environment = "dev"
     deployment_region      = "us-east-1"
     domain_name            = "books.example.com"
-    domain_prefix          = "incorrect-prefix"
     route53_zone_id        = "Z1234567890"
   }
 
   assert {
     condition     = aws_route53_record.mx_record.name == "books.example.com"
-    error_message = "MX record name must be derived from domain_name, not domain_prefix."
+    error_message = "MX record name must be derived from domain_name."
   }
 
   assert {
