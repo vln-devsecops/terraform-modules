@@ -11,6 +11,7 @@ output "bucket_arn" {
 output "bucket_domain_name" {
   description = "Bucket domain name of the central logs S3 bucket, for use as an access log target."
   value       = aws_s3_bucket.logs.bucket_domain_name
+  depends_on  = [aws_s3_bucket_ownership_controls.logs]
 }
 
 output "kms_key_arn" {
