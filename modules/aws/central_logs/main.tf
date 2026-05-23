@@ -25,6 +25,15 @@ resource "aws_s3_bucket" "logs" {
   tags = var.tags
 }
 
+# CloudFront standard logging requires bucket ACL support.
+resource "aws_s3_bucket_ownership_controls" "logs" {
+  bucket = aws_s3_bucket.logs.id
+
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
 resource "aws_s3_bucket_versioning" "logs" {
   bucket = aws_s3_bucket.logs.id
 

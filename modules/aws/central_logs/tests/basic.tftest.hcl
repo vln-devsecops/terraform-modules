@@ -167,6 +167,11 @@ run "client_mode" {
     condition     = length(aws_cloudtrail.central) == 0
     error_message = "CloudTrail should not be created in client mode."
   }
+
+  assert {
+    condition     = aws_s3_bucket_ownership_controls.logs.rule[0].object_ownership == "BucketOwnerPreferred"
+    error_message = "Logs bucket must keep ACL-capable ownership controls for CloudFront standard logging."
+  }
 }
 
 run "forbid_cloudtrail_in_client_mode" {
