@@ -42,7 +42,7 @@ run "replication_applies_successfully_with_versioning" {
 
   # Verify versioning is enabled (required for replication)
   assert {
-    condition     = aws_s3_bucket_versioning.source.versioning_configuration[0].status == "Enabled"
+    condition     = aws_s3_bucket_versioning.source[0].versioning_configuration[0].status == "Enabled"
     error_message = "Versioning must be enabled on source bucket for replication."
   }
 

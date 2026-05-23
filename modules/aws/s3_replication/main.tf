@@ -50,6 +50,7 @@ resource "aws_iam_role_policy" "replication" {
 }
 
 resource "aws_s3_bucket_versioning" "source" {
+  count  = var.manage_source_bucket_versioning ? 1 : 0
   bucket = var.source_bucket_id
 
   versioning_configuration {

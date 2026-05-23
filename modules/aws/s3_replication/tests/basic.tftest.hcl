@@ -104,7 +104,29 @@ run "versioning_enabled_on_source" {
   }
 
   assert {
-    condition     = aws_s3_bucket_versioning.source.versioning_configuration[0].status == "Enabled"
+    condition     = aws_s3_bucket_versioning.source[0].versioning_configuration[0].status == "Enabled"
     error_message = "Versioning must be Enabled on the source bucket."
+  }
+}
+
+run "can_skip_source_versioning_management" {
+  command = plan
+
+  variables {
+    source_bucket_id                 = "my-cloudfront-logs"
+    source_bucket_arn                = "arn:aws:s3:::my-cloudfront-logs"
+    destination_bucket_arn           = "arn:aws:s3:::central-logs"
+    role_name                        = "cloudfront-log-replication"
+    manage_source_bucket_versioning  = false
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket_versioning.source) == 0
+    error_message = "Source bucket versioning resource should be skipped when versioning is managed elsewhere."
+  }
+
+  assert {
+    condition     = aws_s3_bucket_replication_configuration.this.bucket == "my-cloudfront-logs"
+    error_message = "Replication configuration should still target the source bucket when versioning management is disabled."
   }
 }
