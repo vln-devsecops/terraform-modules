@@ -11,7 +11,8 @@ directly after deploying real content: because those objects are managed by
 Terraform, toggling the flag to `false` will plan their deletion. If you want
 to stop managing placeholder objects after first deploy, first remove
 `aws_s3_object.placeholder_index[0]` and `aws_s3_object.placeholder_404[0]`
-from state, then set `create_placeholder_site = false`.
+from state (for example: `terraform state rm aws_s3_object.placeholder_index[0] aws_s3_object.placeholder_404[0]`),
+then set `create_placeholder_site = false`.
 ## Inputs
 
 | Name | Description | Type |
