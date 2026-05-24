@@ -4,6 +4,9 @@ Creates an AWS-backed static site with a private S3 origin, CloudFront OAC,
 Route53 alias records, SPA-friendly rewrites, and optional lightweight
 basic-auth at the viewer-request edge.
 
+By default, the module seeds placeholder `index.html` and `404.html` objects so
+the site is reachable for smoke testing before the real frontend content is
+deployed.
 ## Inputs
 
 | Name | Description | Type |
@@ -22,6 +25,9 @@ basic-auth at the viewer-request edge.
 | `basic_auth_password` | Basic-auth password when `basic_auth_enabled` is true. | `string` |
 | `basic_auth_realm` | Realm label returned in the `WWW-Authenticate` challenge. | `string` |
 | `tags` | Additional tags to apply to created resources. | `map(string)` |
+| `create_placeholder_site` | Whether to seed placeholder `index.html` and `404.html` content objects. | `bool` |
+| `placeholder_index_html` | Optional custom HTML content for the placeholder `index.html` object. | `string` |
+| `placeholder_404_html` | Optional custom HTML content for the placeholder `404.html` object. | `string` |
 
 ## Outputs
 

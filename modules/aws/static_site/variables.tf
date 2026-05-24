@@ -135,6 +135,24 @@ variable "response_headers_policy_id" {
   default     = null
 }
 
+variable "create_placeholder_site" {
+  description = "Whether to create placeholder index and 404 objects so the site is testable before first content deployment."
+  type        = bool
+  default     = true
+}
+
+variable "placeholder_index_html" {
+  description = "HTML content for the placeholder index object when create_placeholder_site is true."
+  type        = string
+  default     = ""
+}
+
+variable "placeholder_404_html" {
+  description = "HTML content for the placeholder 404 object when create_placeholder_site is true."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Additional tags to apply to created resources."
   type        = map(string)

@@ -3,6 +3,45 @@ locals {
   common_tags = merge(var.tags, {
     site = var.site_name
   })
+  default_placeholder_index_html = <<-HTML
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>${var.site_name}</title>
+        <style>
+          body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem; color: #111827; }
+          .box { max-width: 640px; padding: 1.5rem; border: 1px solid #d1d5db; border-radius: 12px; }
+          h1 { margin-top: 0; }
+          code { background: #f3f4f6; padding: 0.1rem 0.3rem; border-radius: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="box">
+          <h1>Site Placeholder</h1>
+          <p>This CloudFront + S3 site is provisioned and reachable.</p>
+          <p>Hostname: <code>${var.site_name}</code></p>
+          <p>Deploy frontend content to replace this placeholder page.</p>
+        </div>
+      </body>
+    </html>
+  HTML
+  default_placeholder_404_html = <<-HTML
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Not Found</title>
+      </head>
+      <body>
+        <h1>404 Not Found</h1>
+      </body>
+    </html>
+  HTML
+  effective_placeholder_index_html = trimspace(var.placeholder_index_html) != "" ? var.placeholder_index_html : local.default_placeholder_index_html
+  effective_placeholder_404_html   = trimspace(var.placeholder_404_html) != "" ? var.placeholder_404_html : local.default_placeholder_404_html
   viewer_request_code = templatefile("${path.module}/templates/viewer_request.js.tftpl", {
     basic_auth_enabled = var.basic_auth_enabled ? "true" : "false"
     basic_auth_header  = var.basic_auth_enabled ? base64encode("${var.basic_auth_username}:${var.basic_auth_password}") : ""
@@ -31,6 +70,24 @@ resource "aws_s3_bucket_public_access_block" "site" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+resource "aws_s3_object" "placeholder_index" {
+  count = var.create_placeholder_site ? 1 : 0
+
+  bucket       = aws_s3_bucket.site.id
+  key          = var.default_root_object
+  content      = local.effective_placeholder_index_html
+  content_type = "text/html; charset=utf-8"
+}
+
+resource "aws_s3_object" "placeholder_404" {
+  count = var.create_placeholder_site ? 1 : 0
+
+  bucket       = aws_s3_bucket.site.id
+  key          = "404.html"
+  content      = local.effective_placeholder_404_html
+  content_type = "text/html; charset=utf-8"
 }
 
 resource "aws_cloudfront_origin_access_control" "site" {
