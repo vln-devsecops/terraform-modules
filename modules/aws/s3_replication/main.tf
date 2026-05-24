@@ -49,14 +49,6 @@ resource "aws_iam_role_policy" "replication" {
   policy = data.aws_iam_policy_document.replication.json
 }
 
-resource "aws_s3_bucket_versioning" "source" {
-  bucket = var.source_bucket_id
-
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
 resource "aws_s3_bucket_replication_configuration" "this" {
   bucket = var.source_bucket_id
   role   = aws_iam_role.replication.arn
@@ -70,6 +62,4 @@ resource "aws_s3_bucket_replication_configuration" "this" {
       storage_class = var.destination_storage_class
     }
   }
-
-  depends_on = [aws_s3_bucket_versioning.source]
 }

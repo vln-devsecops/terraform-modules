@@ -2,7 +2,7 @@
 
 Enables S3 replication from a source bucket to a central (cross-account) log aggregation bucket.
 
-Enables versioning on the source bucket (required by S3 for replication), creates an IAM replication role, and configures an S3 replication rule.
+Creates an IAM replication role and configures an S3 replication rule. The source bucket must already have versioning enabled by the module or stack that owns that bucket.
 
 ## Usage
 
@@ -21,19 +21,19 @@ module "cloudfront_log_replication" {
 
 ## Inputs
 
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|----------|
-| `source_bucket_id` | ID (name) of the source S3 bucket | `string` | - | yes |
-| `source_bucket_arn` | ARN of the source S3 bucket | `string` | - | yes |
-| `destination_bucket_arn` | ARN of the central logs destination bucket | `string` | - | yes |
-| `role_name` | IAM role name for the replication role | `string` | - | yes |
-| `rule_id` | Replication rule identifier | `string` | `"replicate-to-central-logs"` | no |
-| `destination_storage_class` | Storage class in the destination bucket | `string` | `"STANDARD"` | no |
-| `tags` | Tags to apply to resources | `map(string)` | `{}` | no |
+| Name                        | Description                                | Type          | Default                       | Required |
+| --------------------------- | ------------------------------------------ | ------------- | ----------------------------- | -------- |
+| `source_bucket_id`          | ID (name) of the source S3 bucket          | `string`      | -                             | yes      |
+| `source_bucket_arn`         | ARN of the source S3 bucket                | `string`      | -                             | yes      |
+| `destination_bucket_arn`    | ARN of the central logs destination bucket | `string`      | -                             | yes      |
+| `role_name`                 | IAM role name for the replication role     | `string`      | -                             | yes      |
+| `rule_id`                   | Replication rule identifier                | `string`      | `"replicate-to-central-logs"` | no       |
+| `destination_storage_class` | Storage class in the destination bucket    | `string`      | `"STANDARD"`                  | no       |
+| `tags`                      | Tags to apply to resources                 | `map(string)` | `{}`                          | no       |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `replication_role_arn` | ARN of the IAM replication role |
+| Name                    | Description                      |
+| ----------------------- | -------------------------------- |
+| `replication_role_arn`  | ARN of the IAM replication role  |
 | `replication_role_name` | Name of the IAM replication role |

@@ -13,10 +13,6 @@ mock_provider "aws" {
     defaults = {}
   }
 
-  mock_resource "aws_s3_bucket_versioning" {
-    defaults = {}
-  }
-
   mock_resource "aws_s3_bucket_replication_configuration" {
     defaults = {}
   }
@@ -93,7 +89,7 @@ run "custom_storage_class_is_applied" {
   }
 }
 
-run "versioning_enabled_on_source" {
+run "replication_targets_source_bucket" {
   command = plan
 
   variables {
@@ -104,7 +100,7 @@ run "versioning_enabled_on_source" {
   }
 
   assert {
-    condition     = aws_s3_bucket_versioning.source.versioning_configuration[0].status == "Enabled"
-    error_message = "Versioning must be Enabled on the source bucket."
+    condition     = aws_s3_bucket_replication_configuration.this.bucket == "my-cloudfront-logs"
+    error_message = "Replication configuration should target the source bucket."
   }
 }
