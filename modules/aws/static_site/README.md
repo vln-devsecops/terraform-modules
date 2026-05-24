@@ -27,7 +27,7 @@ future applies.
 | `basic_auth_password` | Basic-auth password when `basic_auth_enabled` is true. | `string` |
 | `basic_auth_realm` | Realm label returned in the `WWW-Authenticate` challenge. | `string` |
 | `tags` | Additional tags to apply to created resources. | `map(string)` |
-| `create_placeholder_site` | Whether to seed placeholder `index.html` and `404.html` content objects. | `bool` |
+| `create_placeholder_site` | Whether to seed placeholder `default_root_object` (typically `index.html`, the default) and `404.html` content objects. | `bool` |
 | `placeholder_index_html` | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string` |
 | `placeholder_404_html` | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string` |
 
