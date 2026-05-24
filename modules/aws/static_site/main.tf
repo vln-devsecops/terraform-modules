@@ -3,7 +3,7 @@ locals {
   common_tags = merge(var.tags, {
     site = var.site_name
   })
-  default_placeholder_index_html = <<-HTML
+  default_placeholder_index_html   = <<-HTML
     <!doctype html>
     <html lang="en">
       <head>
@@ -27,7 +27,7 @@ locals {
       </body>
     </html>
   HTML
-  default_placeholder_404_html = <<-HTML
+  default_placeholder_404_html     = <<-HTML
     <!doctype html>
     <html lang="en">
       <head>

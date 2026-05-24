@@ -191,10 +191,10 @@ run "placeholder_seeding_can_be_disabled" {
   command = plan
 
   variables {
-    site_name                = "test-no-placeholder.devsecops.vlinder.ca"
-    route53_zone_id          = "Z1234567890"
-    acm_certificate_arn      = "arn:aws:acm:us-east-1:123456789012:certificate/example"
-    create_placeholder_site  = false
+    site_name               = "test-no-placeholder.devsecops.vlinder.ca"
+    route53_zone_id         = "Z1234567890"
+    acm_certificate_arn     = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    create_placeholder_site = false
   }
 
   assert {
