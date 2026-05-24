@@ -172,7 +172,7 @@ variable "origin_response_lambda_qualified_arn" {
 }
 
 variable "create_placeholder_site" {
-  description = "Whether to create placeholder objects for `default_root_object` and `404.html` so the site is testable before first content deployment."
+  description = "Whether to create placeholder default_root_object and 404.html objects so the site is testable before first content deployment."
   type        = bool
   default     = true
 }
