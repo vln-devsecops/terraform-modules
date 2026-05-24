@@ -6,9 +6,12 @@ basic-auth at the viewer-request edge.
 
 By default, the module seeds placeholder `default_root_object` and
 `404.html` objects so the site is reachable for smoke testing before the real
-frontend content is deployed. After deploying real frontend content, set
-`create_placeholder_site = false` to avoid Terraform restoring placeholders on
-future applies.
+frontend content is deployed. Do not set `create_placeholder_site = false`
+directly after deploying real content: because those objects are managed by
+Terraform, toggling the flag to `false` will plan their deletion. If you want
+to stop managing placeholder objects after first deploy, first remove
+`aws_s3_object.placeholder_index[0]` and `aws_s3_object.placeholder_404[0]`
+from state, then set `create_placeholder_site = false`.
 ## Inputs
 
 | Name | Description | Type |
