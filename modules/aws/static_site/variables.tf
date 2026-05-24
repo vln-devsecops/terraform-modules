@@ -142,15 +142,15 @@ variable "create_placeholder_site" {
 }
 
 variable "placeholder_index_html" {
-  description = "HTML content for the placeholder default_root_object when create_placeholder_site is true."
+  description = "HTML content for the placeholder default_root_object when create_placeholder_site is true. Defaults to null, which uses the module's built-in placeholder page."
   type        = string
-  default     = ""
+  default     = null
 }
 
 variable "placeholder_404_html" {
-  description = "HTML content for the placeholder 404.html object when create_placeholder_site is true."
+  description = "HTML content for the placeholder 404.html object when create_placeholder_site is true. Defaults to null, which uses the module's built-in placeholder page."
   type        = string
-  default     = ""
+  default     = null
 }
 
 variable "tags" {

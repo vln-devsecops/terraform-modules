@@ -187,6 +187,26 @@ run "custom_placeholder_html_is_applied" {
   }
 }
 
+run "null_placeholder_html_uses_module_defaults" {
+  command = plan
+
+  variables {
+    site_name           = "test-null-placeholder.devsecops.vlinder.ca"
+    route53_zone_id     = "Z1234567890"
+    acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.placeholder_index[0].content, "Site Placeholder")
+    error_message = "Default placeholder index HTML should be used when placeholder_index_html is null."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.placeholder_404[0].content, "404 Not Found")
+    error_message = "Default placeholder 404 HTML should be used when placeholder_404_html is null."
+  }
+}
+
 run "placeholder_seeding_can_be_disabled" {
   command = plan
 
