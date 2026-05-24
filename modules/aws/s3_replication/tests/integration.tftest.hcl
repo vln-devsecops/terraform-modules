@@ -14,10 +14,6 @@ mock_provider "aws" {
     defaults = {}
   }
 
-  mock_resource "aws_s3_bucket_versioning" {
-    defaults = {}
-  }
-
   mock_resource "aws_s3_bucket_replication_configuration" {
     defaults = {}
   }
@@ -38,12 +34,6 @@ run "replication_applies_successfully_with_versioning" {
     destination_bucket_arn = "arn:aws:s3:::test-dst-repl"
     role_name              = "test-replication-role"
     rule_id                = "test-replicate-all"
-  }
-
-  # Verify versioning is enabled (required for replication)
-  assert {
-    condition     = aws_s3_bucket_versioning.source[0].versioning_configuration[0].status == "Enabled"
-    error_message = "Versioning must be enabled on source bucket for replication."
   }
 
   # Verify replication configuration exists and targets correct destination

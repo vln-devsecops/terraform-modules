@@ -35,12 +35,6 @@ variable "destination_storage_class" {
   }
 }
 
-variable "manage_source_bucket_versioning" {
-  description = "Whether this module should manage versioning on the source bucket. Set to false when another module already owns source bucket versioning."
-  type        = bool
-  default     = true
-}
-
 variable "tags" {
   description = "Tags to apply to taggable resources."
   type        = map(string)

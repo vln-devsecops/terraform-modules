@@ -2,7 +2,7 @@
 
 Enables S3 replication from a source bucket to a central (cross-account) log aggregation bucket.
 
-Enables versioning on the source bucket (required by S3 for replication), creates an IAM replication role, and configures an S3 replication rule.
+Creates an IAM replication role and configures an S3 replication rule. The source bucket must already have versioning enabled by the module or stack that owns that bucket.
 
 ## Usage
 

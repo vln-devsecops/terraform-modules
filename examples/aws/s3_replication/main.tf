@@ -46,6 +46,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "source" {
   }
 }
 
+resource "aws_s3_bucket_versioning" "source" {
+  bucket = aws_s3_bucket.source.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 resource "aws_s3_bucket" "destination" {
   bucket        = var.destination_bucket_name
   force_destroy = true
@@ -73,6 +81,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "destination" {
   }
 }
 
+resource "aws_s3_bucket_versioning" "destination" {
+  bucket = aws_s3_bucket.destination.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 module "s3_replication" {
   source = "../../../modules/aws/s3_replication"
 
@@ -84,5 +100,10 @@ module "s3_replication" {
   tags = {
     Environment = "example"
   }
+
+  depends_on = [
+    aws_s3_bucket_versioning.source,
+    aws_s3_bucket_versioning.destination,
+  ]
 }
 
