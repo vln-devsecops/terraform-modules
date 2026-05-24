@@ -25,7 +25,7 @@ mock_provider "aws" {
   }
 }
 
-run "replication_applies_successfully_with_versioning" {
+run "replication_applies_successfully" {
   command = apply
 
   variables {
