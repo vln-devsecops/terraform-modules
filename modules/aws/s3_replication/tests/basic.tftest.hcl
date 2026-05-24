@@ -113,11 +113,11 @@ run "can_skip_source_versioning_management" {
   command = plan
 
   variables {
-    source_bucket_id                 = "my-cloudfront-logs"
-    source_bucket_arn                = "arn:aws:s3:::my-cloudfront-logs"
-    destination_bucket_arn           = "arn:aws:s3:::central-logs"
-    role_name                        = "cloudfront-log-replication"
-    manage_source_bucket_versioning  = false
+    source_bucket_id                = "my-cloudfront-logs"
+    source_bucket_arn               = "arn:aws:s3:::my-cloudfront-logs"
+    destination_bucket_arn          = "arn:aws:s3:::central-logs"
+    role_name                       = "cloudfront-log-replication"
+    manage_source_bucket_versioning = false
   }
 
   assert {
