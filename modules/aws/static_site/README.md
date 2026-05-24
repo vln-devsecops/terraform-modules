@@ -4,9 +4,11 @@ Creates an AWS-backed static site with a private S3 origin, CloudFront OAC,
 Route53 alias records, SPA-friendly rewrites, and optional lightweight
 basic-auth at the viewer-request edge.
 
-By default, the module seeds placeholder `index.html` and `404.html` objects so
-the site is reachable for smoke testing before the real frontend content is
-deployed.
+By default, the module seeds placeholder `default_root_object` and
+`404.html` objects so the site is reachable for smoke testing before the real
+frontend content is deployed. After deploying real frontend content, set
+`create_placeholder_site = false` to avoid Terraform restoring placeholders on
+future applies.
 ## Inputs
 
 | Name | Description | Type |
