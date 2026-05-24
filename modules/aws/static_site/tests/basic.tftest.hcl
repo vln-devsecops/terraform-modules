@@ -165,6 +165,28 @@ run "waf_acl_and_access_logging_are_applied" {
   }
 }
 
+run "custom_placeholder_html_is_applied" {
+  command = plan
+
+  variables {
+    site_name              = "test-custom-placeholder.devsecops.vlinder.ca"
+    route53_zone_id        = "Z1234567890"
+    acm_certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    placeholder_index_html = "<html><body>custom index</body></html>"
+    placeholder_404_html   = "<html><body>custom 404</body></html>"
+  }
+
+  assert {
+    condition     = aws_s3_object.placeholder_index[0].content == "<html><body>custom index</body></html>"
+    error_message = "placeholder_index_html should set the placeholder index object content."
+  }
+
+  assert {
+    condition     = aws_s3_object.placeholder_404[0].content == "<html><body>custom 404</body></html>"
+    error_message = "placeholder_404_html should set the placeholder 404 object content."
+  }
+}
+
 run "placeholder_seeding_can_be_disabled" {
   command = plan
 
