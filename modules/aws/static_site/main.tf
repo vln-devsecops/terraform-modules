@@ -79,6 +79,10 @@ resource "aws_s3_object" "placeholder_index" {
   key          = var.default_root_object
   content      = local.effective_placeholder_index_html
   content_type = "text/html; charset=utf-8"
+
+  lifecycle {
+    ignore_changes = [content, content_type, cache_control]
+  }
 }
 
 resource "aws_s3_object" "placeholder_404" {
@@ -88,6 +92,10 @@ resource "aws_s3_object" "placeholder_404" {
   key          = "404.html"
   content      = local.effective_placeholder_404_html
   content_type = "text/html; charset=utf-8"
+
+  lifecycle {
+    ignore_changes = [content, content_type, cache_control]
+  }
 }
 
 resource "aws_cloudfront_origin_access_control" "site" {
