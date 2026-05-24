@@ -142,7 +142,7 @@ variable "create_placeholder_site" {
 }
 
 variable "placeholder_index_html" {
-  description = "HTML content for the placeholder default_root_object object when create_placeholder_site is true."
+  description = "HTML content for the placeholder default_root_object when create_placeholder_site is true."
   type        = string
   default     = ""
 }
