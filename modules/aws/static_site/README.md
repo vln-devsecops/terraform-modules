@@ -4,6 +4,19 @@ Creates an AWS-backed static site with a private S3 origin, CloudFront OAC,
 Route53 alias records, SPA-friendly rewrites, and optional lightweight
 basic-auth at the viewer-request edge.
 
+By default, the module seeds placeholder `default_root_object` and
+`404.html` objects so the site is reachable for smoke testing before the real
+frontend content is deployed. Do not set `create_placeholder_site = false`
+directly after deploying real content: because those objects are managed by
+Terraform, toggling the flag to `false` will plan their deletion. If you want
+to stop managing placeholder objects after first deploy, first remove
+`aws_s3_object.placeholder_index[0]` and `aws_s3_object.placeholder_404[0]`
+from state (for example: `terraform state rm aws_s3_object.placeholder_index[0] aws_s3_object.placeholder_404[0]`),
+then set `create_placeholder_site = false`.
+
+In general, though, just leave the setting alone and deploy your contents to
+the S3 bucket.
+
 ## Inputs
 
 | Name | Description | Type |
@@ -22,6 +35,9 @@ basic-auth at the viewer-request edge.
 | `basic_auth_password` | Basic-auth password when `basic_auth_enabled` is true. | `string` |
 | `basic_auth_realm` | Realm label returned in the `WWW-Authenticate` challenge. | `string` |
 | `tags` | Additional tags to apply to created resources. | `map(string)` |
+| `create_placeholder_site` | Whether to seed placeholder `default_root_object` (typically `index.html`, the default) and `404.html` content objects. | `bool` |
+| `placeholder_index_html` | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string` |
+| `placeholder_404_html` | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string` |
 
 ## Outputs
 

@@ -135,6 +135,24 @@ variable "response_headers_policy_id" {
   default     = null
 }
 
+variable "create_placeholder_site" {
+  description = "Whether to create placeholder objects for `default_root_object` and `404.html` so the site is testable before first content deployment."
+  type        = bool
+  default     = true
+}
+
+variable "placeholder_index_html" {
+  description = "HTML content for the placeholder default_root_object when create_placeholder_site is true. Defaults to null, which uses the module's built-in placeholder page."
+  type        = string
+  default     = null
+}
+
+variable "placeholder_404_html" {
+  description = "HTML content for the placeholder 404.html object when create_placeholder_site is true. Defaults to null, which uses the module's built-in placeholder page."
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   description = "Additional tags to apply to created resources."
   type        = map(string)

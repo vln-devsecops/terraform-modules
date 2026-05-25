@@ -62,6 +62,16 @@ run "static_site_defaults_match_contract" {
     condition     = aws_route53_record.site_a.alias[0].name == "d111111abcdef8.cloudfront.net" && aws_route53_record.site_aaaa.zone_id == "Z1234567890"
     error_message = "Route53 alias record contract changed unexpectedly."
   }
+
+  assert {
+    condition     = length(aws_s3_object.placeholder_index) == 1 && aws_s3_object.placeholder_index[0].key == "index.html"
+    error_message = "Placeholder index object should exist by default."
+  }
+
+  assert {
+    condition     = length(aws_s3_object.placeholder_404) == 1 && aws_s3_object.placeholder_404[0].key == "404.html"
+    error_message = "Placeholder 404 object should exist by default."
+  }
 }
 
 run "optional_basic_auth_is_rendered_at_edge" {
@@ -152,5 +162,63 @@ run "waf_acl_and_access_logging_are_applied" {
   assert {
     condition     = one(aws_cloudfront_distribution.site.default_cache_behavior).response_headers_policy_id == "67f7725c-6f97-4210-82d7-5512b31e9d03"
     error_message = "Response headers policy ID should be applied to the default cache behavior."
+  }
+}
+
+run "custom_placeholder_html_is_applied" {
+  command = plan
+
+  variables {
+    site_name              = "test-custom-placeholder.devsecops.vlinder.ca"
+    route53_zone_id        = "Z1234567890"
+    acm_certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    placeholder_index_html = "<html><body>custom index</body></html>"
+    placeholder_404_html   = "<html><body>custom 404</body></html>"
+  }
+
+  assert {
+    condition     = aws_s3_object.placeholder_index[0].content == "<html><body>custom index</body></html>"
+    error_message = "placeholder_index_html should set the placeholder index object content."
+  }
+
+  assert {
+    condition     = aws_s3_object.placeholder_404[0].content == "<html><body>custom 404</body></html>"
+    error_message = "placeholder_404_html should set the placeholder 404 object content."
+  }
+}
+
+run "null_placeholder_html_uses_module_defaults" {
+  command = plan
+
+  variables {
+    site_name           = "test-null-placeholder.devsecops.vlinder.ca"
+    route53_zone_id     = "Z1234567890"
+    acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.placeholder_index[0].content, "Site Placeholder")
+    error_message = "Default placeholder index HTML should be used when placeholder_index_html is null."
+  }
+
+  assert {
+    condition     = strcontains(aws_s3_object.placeholder_404[0].content, "404 Not Found")
+    error_message = "Default placeholder 404 HTML should be used when placeholder_404_html is null."
+  }
+}
+
+run "placeholder_seeding_can_be_disabled" {
+  command = plan
+
+  variables {
+    site_name               = "test-no-placeholder.devsecops.vlinder.ca"
+    route53_zone_id         = "Z1234567890"
+    acm_certificate_arn     = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    create_placeholder_site = false
+  }
+
+  assert {
+    condition     = length(aws_s3_object.placeholder_index) == 0 && length(aws_s3_object.placeholder_404) == 0
+    error_message = "Placeholder objects should not be created when create_placeholder_site is false."
   }
 }
