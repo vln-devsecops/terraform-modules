@@ -19,38 +19,38 @@ the S3 bucket.
 
 ## Inputs
 
-| Name | Description | Type |
-| --- | --- | --- |
-| `site_name` | Fully qualified hostname for the static site. | `string` |
-| `route53_zone_id` | Route53 hosted zone ID that serves the site hostname. | `string` |
-| `acm_certificate_arn` | ACM certificate ARN in `us-east-1` for the CloudFront alias domain. | `string` |
-| `default_root_object` | Default root object served by CloudFront. | `string` |
-| `cloudfront_price_class` | CloudFront price class for the site distribution. | `string` |
-| `http_version` | CloudFront HTTP version. | `string` |
-| `force_destroy` | Whether to allow the site bucket to be force-destroyed. | `bool` |
-| `enable_spa_fallback` | Whether to rewrite 403 and 404 responses to `index.html`. | `bool` |
-| `enable_pretty_urls` | Whether to rewrite extensionless viewer requests to `index.html` paths. | `bool` |
-| `basic_auth_enabled` | Whether to require HTTP basic auth at the CloudFront viewer-request edge. | `bool` |
-| `basic_auth_username` | Basic-auth username when `basic_auth_enabled` is true. | `string` |
-| `basic_auth_password` | Basic-auth password when `basic_auth_enabled` is true. | `string` |
-| `basic_auth_realm` | Realm label returned in the `WWW-Authenticate` challenge. | `string` |
-| `tags` | Additional tags to apply to created resources. | `map(string)` |
-| `create_placeholder_site` | Whether to seed placeholder `default_root_object` (typically `index.html`, the default) and `404.html` content objects. | `bool` |
-| `placeholder_index_html` | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string` |
-| `placeholder_404_html` | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string` |
+| Name                      | Description                                                                                                                                                        | Type          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
+| `site_name`               | Fully qualified hostname for the static site.                                                                                                                      | `string`      |
+| `route53_zone_id`         | Route53 hosted zone ID that serves the site hostname.                                                                                                              | `string`      |
+| `acm_certificate_arn`     | ACM certificate ARN in `us-east-1` for the CloudFront alias domain.                                                                                                | `string`      |
+| `default_root_object`     | Default root object served by CloudFront.                                                                                                                          | `string`      |
+| `cloudfront_price_class`  | CloudFront price class for the site distribution.                                                                                                                  | `string`      |
+| `http_version`            | CloudFront HTTP version.                                                                                                                                           | `string`      |
+| `force_destroy`           | Whether to allow the site bucket to be force-destroyed.                                                                                                            | `bool`        |
+| `enable_spa_fallback`     | Whether to rewrite 403 and 404 responses to `index.html`.                                                                                                          | `bool`        |
+| `enable_pretty_urls`      | Whether to rewrite extensionless viewer requests to `index.html` paths.                                                                                            | `bool`        |
+| `basic_auth_enabled`      | Whether to require HTTP basic auth at the CloudFront viewer-request edge.                                                                                          | `bool`        |
+| `basic_auth_username`     | Basic-auth username when `basic_auth_enabled` is true.                                                                                                             | `string`      |
+| `basic_auth_password`     | Basic-auth password when `basic_auth_enabled` is true.                                                                                                             | `string`      |
+| `basic_auth_realm`        | Realm label returned in the `WWW-Authenticate` challenge.                                                                                                          | `string`      |
+| `tags`                    | Additional tags to apply to created resources.                                                                                                                     | `map(string)` |
+| `create_placeholder_site` | Whether to seed placeholder `default_root_object` (typically `index.html`, the default) and `404.html` content objects.                                            | `bool`        |
+| `placeholder_index_html`  | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string`      |
+| `placeholder_404_html`    | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string`      |
 
 ## Outputs
 
-| Name | Description |
-| --- | --- |
-| `site_name` | Fully qualified site hostname. |
-| `site_url` | Primary HTTPS URL for the site. |
-| `bucket_name` | S3 bucket name serving static site content. |
-| `bucket_arn` | ARN of the S3 bucket serving static site content. |
-| `cloudfront_distribution_id` | CloudFront distribution ID for invalidation and operations. |
-| `cloudfront_distribution_arn` | CloudFront distribution ARN. |
-| `cloudfront_domain_name` | CloudFront distribution domain name. |
-| `route53_record_name` | Route53 alias record name. |
+| Name                          | Description                                                 |
+| ----------------------------- | ----------------------------------------------------------- |
+| `site_name`                   | Fully qualified site hostname.                              |
+| `site_url`                    | Primary HTTPS URL for the site.                             |
+| `bucket_name`                 | S3 bucket name serving static site content.                 |
+| `bucket_arn`                  | ARN of the S3 bucket serving static site content.           |
+| `cloudfront_distribution_id`  | CloudFront distribution ID for invalidation and operations. |
+| `cloudfront_distribution_arn` | CloudFront distribution ARN.                                |
+| `cloudfront_domain_name`      | CloudFront distribution domain name.                        |
+| `route53_record_name`         | Route53 alias record name.                                  |
 
 ## Example
 
