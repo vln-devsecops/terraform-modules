@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CHECKOV_VERSION: "3.2.525"
-            CHECKOV_SKIP_CHECKS: "CKV_AWS_70"
+      CHECKOV_SKIP_CHECKS: "CKV_AWS_70"
     steps:
       - name: Checkout
         uses: actions/checkout@v5

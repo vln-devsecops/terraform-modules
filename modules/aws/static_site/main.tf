@@ -56,6 +56,7 @@ locals {
   )
 }
 
+# trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket" "site" {
   # checkov:skip=CKV_AWS_18:Access logging optional for public OAC-protected content; caller provides log bucket when needed
   # checkov:skip=CKV_AWS_21:Versioning not required for OAC-protected public content that has no sensitive data
@@ -63,7 +64,6 @@ resource "aws_s3_bucket" "site" {
   # checkov:skip=CKV_AWS_145:Cross-region replication not required for OAC-protected public content
   # checkov:skip=CKV2_AWS_61:S3 deletion protection by policy for OAC-protected public bucket
   # checkov:skip=CKV2_AWS_62:Event notifications not required for OAC-protected public content
-  # trivy:ignore:AVD-AWS-0132
   bucket        = local.actual_bucket_name
   force_destroy = var.force_destroy
   tags          = merge(local.common_tags, { rg = "storage" })
@@ -147,12 +147,12 @@ resource "aws_s3_bucket_policy" "site" {
   policy = data.aws_iam_policy_document.site_cloudfront_read.json
 }
 
+# trivy:ignore:AVD-AWS-0011
 resource "aws_cloudfront_distribution" "site" {
   # checkov:skip=CKV_AWS_310:Single-origin static site does not need origin failover
   # checkov:skip=CKV_AWS_374:Geo restriction intentionally disabled for public site
   # checkov:skip=CKV2_AWS_32:Response headers policy caller-configurable via variable
   # checkov:skip=CKV2_AWS_47:Public subnets for runner workloads are intentional; no EC2 in this module
-  # trivy:ignore:AVD-AWS-0011
   enabled             = true
   aliases             = [var.site_name]
   default_root_object = var.default_root_object
