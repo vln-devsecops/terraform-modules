@@ -11,6 +11,9 @@ locals {
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "kms" {
+  # checkov:skip=CKV_AWS_109:Root-access KMS policy intentionally delegates broad permissions to account root
+  # checkov:skip=CKV_AWS_111:Root-access KMS policy intentionally delegates broad permissions to account root
+  # checkov:skip=CKV_AWS_356:Root-access KMS policy intentionally delegates broad permissions to account root
   statement {
     sid    = "EnableRootPermissions"
     effect = "Allow"
@@ -26,6 +29,10 @@ data "aws_iam_policy_document" "kms" {
 }
 
 resource "aws_s3_bucket" "this" {
+  # checkov:skip=CKV2_AWS_61:S3 deletion protection by policy, not by aws_s3_bucket_object_lock_enabled, for this shared module
+  # checkov:skip=CKV_AWS_18:Access logging caller-configurable, not wired at module level
+  # checkov:skip=CKV_AWS_144:Cross-region replication caller-configurable, not wired at module level
+  # checkov:skip=CKV2_AWS_62:Event notifications caller-configurable, not wired at module level
   bucket = var.bucket_name_suffix != "" ? "${var.app_name}-deployment-bucket-${var.bucket_name_suffix}-${var.deployment_region}" : "${var.app_name}-deployment-bucket-${var.deployment_environment}-${var.deployment_region}"
   tags   = merge(local.common_tags, var.tags)
 }

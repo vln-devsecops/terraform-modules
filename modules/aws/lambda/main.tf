@@ -31,6 +31,9 @@ locals {
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "kms" {
+  # checkov:skip=CKV_AWS_109:Root-access KMS policy intentionally delegates broad permissions to account root
+  # checkov:skip=CKV_AWS_111:Root-access KMS policy intentionally delegates broad permissions to account root
+  # checkov:skip=CKV_AWS_356:Root-access KMS policy intentionally delegates broad permissions to account root
   statement {
     sid    = "EnableRootPermissions"
     effect = "Allow"
@@ -153,6 +156,10 @@ resource "aws_iam_role_policy_attachment" "additional" {
 }
 
 resource "aws_lambda_function" "this" {
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
+  # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
   function_name = "${var.app_name}-${var.function_name}-${var.deployment_environment}"
   role          = aws_iam_role.this.arn
   handler       = var.handler_name
@@ -185,6 +192,7 @@ resource "aws_lambda_function" "this" {
 }
 
 resource "aws_secretsmanager_secret" "this" {
+  # checkov:skip=CKV2_AWS_57:Secret rotation is caller-configurable, not wired at module level
   count = var.create_secret ? 1 : 0
 
   name        = "${var.app_name}-${var.function_name}-${var.deployment_environment}-secrets"

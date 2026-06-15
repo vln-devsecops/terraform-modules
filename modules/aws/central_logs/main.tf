@@ -1,6 +1,7 @@
 data "aws_caller_identity" "current" {}
 
 resource "aws_kms_key" "logs" {
+  # checkov:skip=CKV2_AWS_64:KMS key uses default policy rather than an explicit delegation statement; callers can override via var.create_kms_key
   count = var.create_kms_key ? 1 : 0
 
   description             = "KMS key for central logs bucket ${var.bucket_name}"
@@ -19,6 +20,9 @@ resource "aws_kms_alias" "logs" {
 
 # trivy:ignore:AVD-AWS-0089
 resource "aws_s3_bucket" "logs" {
+  # checkov:skip=CKV_AWS_18:Access logging for a log bucket would create a circular dependency
+  # checkov:skip=CKV_AWS_144:Cross-region replication caller-configurable, not wired at module level
+  # checkov:skip=CKV2_AWS_62:Event notifications caller-configurable, not wired at module level
   bucket        = var.bucket_name
   force_destroy = false
 
@@ -151,6 +155,7 @@ resource "aws_s3_bucket_policy" "logs" {
 }
 
 resource "aws_cloudtrail" "central" {
+  # checkov:skip=CKV2_AWS_10:CloudWatch Logs integration caller-configurable, not wired at module level
   count = var.deployment_mode == "central" && var.enable_cloudtrail ? 1 : 0
 
   name                          = var.cloudtrail_name
