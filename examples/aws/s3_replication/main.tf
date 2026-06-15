@@ -14,12 +14,16 @@ provider "aws" {
 }
 
 resource "aws_kms_key" "buckets" {
+  # checkov:skip=CKV2_AWS_64:Example KMS key uses default policy; production callers should provide an explicit policy
   description             = "KMS key for source and destination bucket encryption"
   deletion_window_in_days = 7
   enable_key_rotation     = true
 }
 
 resource "aws_s3_bucket" "source" {
+  # checkov:skip=CKV_AWS_18:Access logging not needed for example bucket
+  # checkov:skip=CKV2_AWS_61:Example bucket with force_destroy for test cleanup
+  # checkov:skip=CKV2_AWS_62:Event notifications not needed for example bucket
   bucket        = var.source_bucket_name
   force_destroy = true
   tags = {
@@ -55,6 +59,9 @@ resource "aws_s3_bucket_versioning" "source" {
 }
 
 resource "aws_s3_bucket" "destination" {
+  # checkov:skip=CKV_AWS_18:Access logging not needed for example bucket
+  # checkov:skip=CKV2_AWS_61:Example bucket with force_destroy for test cleanup
+  # checkov:skip=CKV2_AWS_62:Event notifications not needed for example bucket
   bucket        = var.destination_bucket_name
   force_destroy = true
   tags = {

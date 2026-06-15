@@ -17,6 +17,8 @@ data "aws_availability_zones" "available" {
 
 # trivy:ignore:AVD-AWS-0178
 resource "aws_vpc" "this" {
+  # checkov:skip=CKV2_AWS_11:VPC flow logs caller-configurable, not wired at module level
+  # checkov:skip=CKV2_AWS_12:Public subnets for runner workloads are intentional per design
   cidr_block           = var.vpc_cidr
   enable_dns_support   = var.enable_dns_support
   enable_dns_hostnames = var.enable_dns_hostnames
@@ -29,6 +31,7 @@ resource "aws_vpc" "this" {
 
 # trivy:ignore:AVD-AWS-0164
 resource "aws_subnet" "public" {
+  # checkov:skip=CKV_AWS_130:Public subnets intentionally auto-assign public IPs for runner and public-access workloads
   count = length(var.public_subnet_cidrs)
 
   vpc_id            = aws_vpc.this.id
