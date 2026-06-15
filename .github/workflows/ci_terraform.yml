@@ -110,6 +110,48 @@ jobs:
             echo "| \`trivy config\` | repository without \`tests/\` fixtures, HIGH/CRITICAL only | pass |"
           } >> "${GITHUB_STEP_SUMMARY}"
 
+  checkov:
+    runs-on: ubuntu-latest
+    env:
+      CHECKOV_VERSION: "3.2.525"
+      CHECKOV_SKIP_CHECKS: "CKV_AWS_18,CKV_AWS_109,CKV_AWS_111,CKV_AWS_115,CKV_AWS_116,CKV_AWS_117,CKV_AWS_144,CKV_AWS_272,CKV_AWS_356,CKV2_AWS_57,CKV2_AWS_61,CKV2_AWS_62,CKV_AWS_21,CKV_AWS_68,CKV_AWS_70,CKV_AWS_86,CKV_AWS_145,CKV_AWS_310,CKV_AWS_374,CKV2_AWS_10,CKV2_AWS_32,CKV2_AWS_47,CKV2_AWS_12,CKV2_AWS_11,CKV2_AWS_64,CKV_AWS_130,CKV2_AWS_65"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install Checkov
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python -m pip install --upgrade pip
+          pip install "checkov==${CHECKOV_VERSION}"
+
+      - name: Run Checkov compliance scan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          checkov \
+            -d . \
+            --framework terraform,github_actions \
+            --skip-path tests \
+            --quiet \
+            --skip-check "${CHECKOV_SKIP_CHECKS}"
+
+          {
+            echo "## Checkov compliance scan"
+            echo
+            echo "| Check | Scope | Result |"
+            echo "| --- | --- | --- |"
+            echo "| \`checkov\` | terraform and GitHub Actions, excluding \`tests/\` fixtures | pass |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   coverage:
     runs-on: ubuntu-latest
     steps:
