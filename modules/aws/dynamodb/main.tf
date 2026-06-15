@@ -12,6 +12,9 @@ locals {
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "kms" {
+  # checkov:skip=CKV_AWS_109:Root-access KMS policy intentionally delegates broad permissions to account root
+  # checkov:skip=CKV_AWS_111:Root-access KMS policy intentionally delegates broad permissions to account root
+  # checkov:skip=CKV_AWS_356:Root-access KMS policy intentionally delegates broad permissions to account root
   statement {
     sid    = "EnableRootPermissions"
     effect = "Allow"
