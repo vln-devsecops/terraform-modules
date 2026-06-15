@@ -27,6 +27,7 @@ resource "aws_s3_bucket" "logs" {
 
 # CloudFront standard logging requires bucket ACL support.
 resource "aws_s3_bucket_ownership_controls" "logs" {
+  # checkov:skip=CKV2_AWS_65:CloudFront standard logging and cross-account S3 PutObject delivery require ACL support
   bucket = aws_s3_bucket.logs.id
 
   rule {
