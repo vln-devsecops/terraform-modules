@@ -189,6 +189,15 @@ resource "aws_cloudfront_distribution" "site" {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.viewer_request.arn
     }
+
+    dynamic "lambda_function_association" {
+      for_each = var.origin_response_lambda_qualified_arn != null ? [var.origin_response_lambda_qualified_arn] : []
+      content {
+        event_type   = "origin-response"
+        lambda_arn   = lambda_function_association.value
+        include_body = false
+      }
+    }
   }
 
   dynamic "logging_config" {

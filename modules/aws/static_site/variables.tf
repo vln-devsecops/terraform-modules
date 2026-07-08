@@ -135,6 +135,20 @@ variable "response_headers_policy_id" {
   default     = null
 }
 
+variable "origin_response_lambda_qualified_arn" {
+  description = "Qualified ARN (including a numeric version, not an alias) of a Lambda@Edge function in us-east-1 to associate with the origin-response event on the default cache behavior. Pair with the aws/lambda-at-edge module to build the function; this module only wires the association and has no opinion on what the function does. Leave null (the default) to omit any origin-response association."
+  type        = string
+  default     = null
+
+  validation {
+    condition = var.origin_response_lambda_qualified_arn == null || can(regex(
+      "^arn:aws:lambda:us-east-1:[0-9]{12}:function:[a-zA-Z0-9-_]+:[0-9]+$",
+      var.origin_response_lambda_qualified_arn
+    ))
+    error_message = "origin_response_lambda_qualified_arn must be a qualified Lambda@Edge ARN in us-east-1, ending in a numeric version (not an alias or an unqualified function ARN), e.g. arn:aws:lambda:us-east-1:123456789012:function:origin-response:3."
+  }
+}
+
 variable "create_placeholder_site" {
   description = "Whether to create placeholder objects for `default_root_object` and `404.html` so the site is testable before first content deployment."
   type        = bool

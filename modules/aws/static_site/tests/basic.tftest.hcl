@@ -222,3 +222,99 @@ run "placeholder_seeding_can_be_disabled" {
     error_message = "Placeholder objects should not be created when create_placeholder_site is false."
   }
 }
+
+run "origin_response_lambda_association_is_omitted_by_default" {
+  command = plan
+
+  variables {
+    site_name           = "test-no-origin-response.devsecops.vlinder.ca"
+    route53_zone_id     = "Z1234567890"
+    acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+  }
+
+  assert {
+    condition     = length(one(aws_cloudfront_distribution.site.default_cache_behavior).lambda_function_association) == 0
+    error_message = "No origin-response Lambda@Edge association should exist when origin_response_lambda_qualified_arn is unset."
+  }
+}
+
+run "origin_response_lambda_association_is_wired_when_configured" {
+  command = plan
+
+  variables {
+    site_name                            = "test-origin-response.devsecops.vlinder.ca"
+    route53_zone_id                      = "Z1234567890"
+    acm_certificate_arn                  = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    origin_response_lambda_qualified_arn = "arn:aws:lambda:us-east-1:123456789012:function:origin-response:3"
+  }
+
+  assert {
+    condition     = length(one(aws_cloudfront_distribution.site.default_cache_behavior).lambda_function_association) == 1
+    error_message = "Exactly one Lambda@Edge association should exist when origin_response_lambda_qualified_arn is set."
+  }
+
+  assert {
+    condition     = one(one(aws_cloudfront_distribution.site.default_cache_behavior).lambda_function_association).event_type == "origin-response"
+    error_message = "The configured association should be for the origin-response event."
+  }
+
+  assert {
+    condition     = one(one(aws_cloudfront_distribution.site.default_cache_behavior).lambda_function_association).lambda_arn == "arn:aws:lambda:us-east-1:123456789012:function:origin-response:3"
+    error_message = "The configured association should point at the supplied qualified ARN."
+  }
+
+  assert {
+    condition     = one(one(aws_cloudfront_distribution.site.default_cache_behavior).lambda_function_association).include_body == false
+    error_message = "The origin-response association should not request the request body."
+  }
+
+  assert {
+    condition     = length(one(aws_cloudfront_distribution.site.default_cache_behavior).function_association) == 1
+    error_message = "The existing viewer-request CloudFront Function association should be unaffected by the new Lambda@Edge hook."
+  }
+}
+
+run "rejects_unqualified_origin_response_lambda_arn" {
+  command = plan
+
+  variables {
+    site_name                            = "test-invalid-arn.devsecops.vlinder.ca"
+    route53_zone_id                      = "Z1234567890"
+    acm_certificate_arn                  = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    origin_response_lambda_qualified_arn = "arn:aws:lambda:us-east-1:123456789012:function:origin-response"
+  }
+
+  expect_failures = [
+    var.origin_response_lambda_qualified_arn,
+  ]
+}
+
+run "rejects_alias_qualified_origin_response_lambda_arn" {
+  command = plan
+
+  variables {
+    site_name                            = "test-invalid-arn.devsecops.vlinder.ca"
+    route53_zone_id                      = "Z1234567890"
+    acm_certificate_arn                  = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    origin_response_lambda_qualified_arn = "arn:aws:lambda:us-east-1:123456789012:function:origin-response:LIVE"
+  }
+
+  expect_failures = [
+    var.origin_response_lambda_qualified_arn,
+  ]
+}
+
+run "rejects_non_us_east_1_origin_response_lambda_arn" {
+  command = plan
+
+  variables {
+    site_name                            = "test-invalid-arn.devsecops.vlinder.ca"
+    route53_zone_id                      = "Z1234567890"
+    acm_certificate_arn                  = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    origin_response_lambda_qualified_arn = "arn:aws:lambda:eu-west-1:123456789012:function:origin-response:3"
+  }
+
+  expect_failures = [
+    var.origin_response_lambda_qualified_arn,
+  ]
+}
