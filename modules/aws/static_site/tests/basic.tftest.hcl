@@ -273,3 +273,48 @@ run "origin_response_lambda_association_is_wired_when_configured" {
     error_message = "The existing viewer-request CloudFront Function association should be unaffected by the new Lambda@Edge hook."
   }
 }
+
+run "rejects_unqualified_origin_response_lambda_arn" {
+  command = plan
+
+  variables {
+    site_name                            = "test-invalid-arn.devsecops.vlinder.ca"
+    route53_zone_id                      = "Z1234567890"
+    acm_certificate_arn                  = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    origin_response_lambda_qualified_arn = "arn:aws:lambda:us-east-1:123456789012:function:origin-response"
+  }
+
+  expect_failures = [
+    var.origin_response_lambda_qualified_arn,
+  ]
+}
+
+run "rejects_alias_qualified_origin_response_lambda_arn" {
+  command = plan
+
+  variables {
+    site_name                            = "test-invalid-arn.devsecops.vlinder.ca"
+    route53_zone_id                      = "Z1234567890"
+    acm_certificate_arn                  = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    origin_response_lambda_qualified_arn = "arn:aws:lambda:us-east-1:123456789012:function:origin-response:LIVE"
+  }
+
+  expect_failures = [
+    var.origin_response_lambda_qualified_arn,
+  ]
+}
+
+run "rejects_non_us_east_1_origin_response_lambda_arn" {
+  command = plan
+
+  variables {
+    site_name                            = "test-invalid-arn.devsecops.vlinder.ca"
+    route53_zone_id                      = "Z1234567890"
+    acm_certificate_arn                  = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    origin_response_lambda_qualified_arn = "arn:aws:lambda:eu-west-1:123456789012:function:origin-response:3"
+  }
+
+  expect_failures = [
+    var.origin_response_lambda_qualified_arn,
+  ]
+}
