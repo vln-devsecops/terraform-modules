@@ -135,6 +135,12 @@ variable "response_headers_policy_id" {
   default     = null
 }
 
+variable "origin_response_lambda_qualified_arn" {
+  description = "Qualified ARN (including version) of a Lambda@Edge function to associate with the origin-response event on the default cache behavior. Pair with the aws/lambda-at-edge module to build the function; this module only wires the association and has no opinion on what the function does. Leave null (the default) to omit any origin-response association."
+  type        = string
+  default     = null
+}
+
 variable "create_placeholder_site" {
   description = "Whether to create placeholder objects for `default_root_object` and `404.html` so the site is testable before first content deployment."
   type        = bool

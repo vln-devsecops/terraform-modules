@@ -38,6 +38,7 @@ the S3 bucket.
 | `create_placeholder_site` | Whether to seed placeholder `default_root_object` (typically `index.html`, the default) and `404.html` content objects.                                            | `bool`        |
 | `placeholder_index_html`  | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string`      |
 | `placeholder_404_html`    | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string`      |
+| `origin_response_lambda_qualified_arn` | Qualified ARN of a Lambda@Edge function to associate with the `origin-response` event on the default cache behavior. See "Origin-response Lambda@Edge (opt-in)" below. | `string`      |
 
 ## Outputs
 
@@ -69,3 +70,51 @@ For low-sensitivity internal dashboards, the recommended default is to keep
 later enable basic auth, remember that those credentials will be rendered into
 the CloudFront function code and therefore remain part of the deployed
 configuration and Terraform state.
+
+## Origin-response Lambda@Edge (opt-in)
+
+`static_site` stays generic about what runs at the edge: it exposes a single
+association point, `origin_response_lambda_qualified_arn`, and otherwise has
+no opinion about what the function does. Leave it unset (the default) and
+nothing changes.
+
+This module does not build or host the function itself — pair it with
+[`aws/lambda-at-edge`](../lambda-at-edge), which already handles the
+Lambda@Edge-specific boilerplate (forced `publish = true`, the
+`edgelambda.amazonaws.com` trust relationship, and the CloudFront replication
+IAM policy). Build your own handler, deploy it via `lambda-at-edge`, and wire
+its `qualified_arn` output into this module:
+
+```hcl
+module "origin_response" {
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/lambda-at-edge?ref=v0.16"
+
+  app_name               = "example"
+  deployment_environment = "prod"
+  function_name          = "origin-response"
+
+  # Must be in us-east-1
+  source_bucket_arn = module.deployment_bucket.bucket_arn
+  source_bucket_id  = module.deployment_bucket.bucket_id
+}
+
+module "static_site" {
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/static_site?ref=v0.16"
+
+  site_name           = "example.com"
+  route53_zone_id     = "Z1234567890"
+  acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+
+  origin_response_lambda_qualified_arn = module.origin_response.qualified_arn
+}
+```
+
+One motivating use case: a locale-suffixed static content convention (for
+example `/md/about.fr.md`, falling back to `/md/about.md` when no translation
+exists yet). Resolving that fallback in an `origin-response` handler — rather
+than a client-side retry — means CloudFront caches the resolved response for
+subsequent requests to the same path, instead of every visitor re-triggering
+the same failed request and retry. The handler is deliberately not shipped as
+part of this module (it's product-specific: which paths to rewrite, and to
+what), but the association point is generic and reusable by any consumer of
+this module.
