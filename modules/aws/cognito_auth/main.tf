@@ -140,8 +140,13 @@ resource "aws_cognito_user_pool" "this" {
     }
   }
 
-  # lambda_config is added in the Lambda slice, once aws_lambda_function.post_confirmation
-  # and .pre_token_generation exist -- see tests/lambdas.tftest.hcl.
+  lambda_config {
+    post_confirmation = aws_lambda_function.post_confirmation.arn
+    pre_token_generation_config {
+      lambda_arn     = aws_lambda_function.pre_token_generation.arn
+      lambda_version = "V2_0"
+    }
+  }
 
   tags = local.common_tags
 }
@@ -407,4 +412,250 @@ module "user_role_assignments" {
       range_key       = "userId"
     }
   ]
+}
+
+# --- Vendored Lambda functions ----------------------------------------------
+#
+# Deliberately not composed via aws/lambda: that module expects a pre-built
+# artifact already uploaded to an S3 deployment bucket (falling back to a
+# placeholder "echo" function otherwise), a convention built for app code
+# deployed independently of infra changes. This module's Lambda source is
+# vendored/committed alongside the module itself (see lambda-src/README.md),
+# so zipping it directly via archive_file keeps the module self-contained on
+# the very first apply -- no bucket, no upload step, no ARN to pass in.
+
+data "archive_file" "post_confirmation" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda-src/post-confirmation"
+  output_path = "${path.module}/.terraform/post-confirmation.zip"
+}
+
+data "archive_file" "pre_token_generation" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda-src/pre-token-generation"
+  output_path = "${path.module}/.terraform/pre-token-generation.zip"
+}
+
+data "archive_file" "admin_api" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda-src/admin-api"
+  output_path = "${path.module}/.terraform/admin-api.zip"
+}
+
+data "aws_iam_policy_document" "lambda_assume_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "post_confirmation" {
+  name               = "${var.app_name}-${var.deployment_environment}-post-confirmation"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "post_confirmation_logging" {
+  role       = aws_iam_role.post_confirmation.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "post_confirmation" {
+  name = "${var.app_name}-${var.deployment_environment}-post-confirmation"
+  role = aws_iam_role.post_confirmation.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query"]
+        Resource = ["${aws_dynamodb_table.tenants.arn}/index/emailDomain-index"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem"]
+        Resource = [module.user_role_assignments.table_arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["cognito-idp:AdminAddUserToGroup"]
+        Resource = [aws_cognito_user_pool.this.arn]
+      },
+    ]
+  })
+}
+
+resource "aws_lambda_function" "post_confirmation" {
+  function_name    = "${var.app_name}-${var.deployment_environment}-post-confirmation"
+  role             = aws_iam_role.post_confirmation.arn
+  handler          = "index.handler"
+  runtime          = "nodejs22.x"
+  timeout          = 5
+  filename         = data.archive_file.post_confirmation.output_path
+  source_code_hash = data.archive_file.post_confirmation.output_base64sha256
+
+  environment {
+    variables = {
+      # No USER_POOL_ID here: Cognito always includes userPoolId on the
+      # trigger event itself, and requiring it via env var would create an
+      # unresolvable circular dependency (this pool's lambda_config needs
+      # this function's ARN; this function would need the pool's ID).
+      TENANCY_MODE                = var.tenancy_mode
+      DEFAULT_TENANT_ID           = "default"
+      DEFAULT_ROLE_ID             = var.default_role_id
+      TENANTS_TABLE_NAME          = aws_dynamodb_table.tenants.name
+      ROLE_ASSIGNMENTS_TABLE_NAME = module.user_role_assignments.table_name
+      BASELINE_GROUPS             = join(",", var.baseline_groups)
+    }
+  }
+
+  tags = local.common_tags
+
+  depends_on = [aws_iam_role_policy_attachment.post_confirmation_logging]
+}
+
+resource "aws_lambda_permission" "post_confirmation" {
+  statement_id  = "AllowCognitoInvokePostConfirmation"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.post_confirmation.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = aws_cognito_user_pool.this.arn
+}
+
+resource "aws_iam_role" "pre_token_generation" {
+  name               = "${var.app_name}-${var.deployment_environment}-pre-token-generation"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "pre_token_generation_logging" {
+  role       = aws_iam_role.pre_token_generation.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "pre_token_generation" {
+  name = "${var.app_name}-${var.deployment_environment}-pre-token-generation"
+  role = aws_iam_role.pre_token_generation.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query"]
+        Resource = [module.user_role_assignments.table_arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem"]
+        Resource = [aws_dynamodb_table.roles.arn]
+      },
+    ]
+  })
+}
+
+resource "aws_lambda_function" "pre_token_generation" {
+  function_name    = "${var.app_name}-${var.deployment_environment}-pre-token-generation"
+  role             = aws_iam_role.pre_token_generation.arn
+  handler          = "index.handler"
+  runtime          = "nodejs22.x"
+  timeout          = 5
+  filename         = data.archive_file.pre_token_generation.output_path
+  source_code_hash = data.archive_file.pre_token_generation.output_base64sha256
+
+  environment {
+    variables = {
+      ROLE_ASSIGNMENTS_TABLE_NAME = module.user_role_assignments.table_name
+      ROLES_TABLE_NAME            = aws_dynamodb_table.roles.name
+    }
+  }
+
+  tags = local.common_tags
+
+  depends_on = [aws_iam_role_policy_attachment.pre_token_generation_logging]
+}
+
+resource "aws_lambda_permission" "pre_token_generation" {
+  statement_id  = "AllowCognitoInvokePreTokenGeneration"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.pre_token_generation.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = aws_cognito_user_pool.this.arn
+}
+
+resource "aws_iam_role" "admin_api" {
+  name               = "${var.app_name}-${var.deployment_environment}-admin-api"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "admin_api_logging" {
+  role       = aws_iam_role.admin_api.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "admin_api" {
+  name = "${var.app_name}-${var.deployment_environment}-admin-api"
+  role = aws_iam_role.admin_api.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:PutItem",
+          "dynamodb:DeleteItem",
+        ]
+        Resource = [
+          module.user_role_assignments.table_arn,
+          "${module.user_role_assignments.table_arn}/index/*",
+        ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Scan"]
+        Resource = [aws_dynamodb_table.roles.arn]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:AdminGetUser",
+          "cognito-idp:AdminDisableUser",
+          "cognito-idp:AdminEnableUser",
+        ]
+        Resource = [aws_cognito_user_pool.this.arn]
+      },
+    ]
+  })
+}
+
+resource "aws_lambda_function" "admin_api" {
+  function_name    = "${var.app_name}-${var.deployment_environment}-admin-api"
+  role             = aws_iam_role.admin_api.arn
+  handler          = "index.handler"
+  runtime          = "nodejs22.x"
+  timeout          = 10
+  filename         = data.archive_file.admin_api.output_path
+  source_code_hash = data.archive_file.admin_api.output_base64sha256
+
+  environment {
+    variables = {
+      ROLE_ASSIGNMENTS_TABLE_NAME = module.user_role_assignments.table_name
+      ROLES_TABLE_NAME            = aws_dynamodb_table.roles.name
+      USER_POOL_ID                = aws_cognito_user_pool.this.id
+    }
+  }
+
+  tags = local.common_tags
+
+  depends_on = [aws_iam_role_policy_attachment.admin_api_logging]
 }
