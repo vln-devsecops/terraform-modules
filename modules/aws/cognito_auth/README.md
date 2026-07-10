@@ -26,25 +26,23 @@ The `acm_certificate_arn` must cover both hostnames this module derives
 — a wildcard cert from [`aws/acm_certificate`](../acm_certificate) is the
 simplest way to get that.
 
-## Why this diverges from this repo's usual module style
+## Branding
 
-Most modules in this repo are thin, bring-your-own-compute wrappers (see
-`static_site`'s `origin_response_lambda_qualified_arn`). `cognito_auth` is
-different on purpose: it provisions its own Lambda functions, DynamoDB
-tables, HTTP API, and static site internally rather than asking the consumer
-to build and wire them. Internally it still composes the existing
-[`aws/lambda`](../lambda)-adjacent patterns, [`aws/dynamodb`](../dynamodb),
-[`aws/http_api`](../http_api), and [`aws/static_site`](../static_site) — DRY
-on the inside, minimal-input on the outside.
+`logo_base64` and `css` are the only overridable branding surface, and both
+default to a generic placeholder (a plain color scheme, no logo) — not any
+particular organization's real branding. Cognito's hosted-UI CSS
+customization only recognizes a fixed, AWS-defined set of selectors; `css`
+can target any of:
 
-One real exception: the three Lambda functions are **not** built via
-`aws/lambda`, because that module expects a pre-built artifact already
-uploaded to an S3 deployment bucket (falling back to a placeholder "echo"
-function otherwise) — a convention built for app code deployed independently
-of infra changes. This module's Lambda source is vendored/committed inside
-the module itself (`lambda-src/`, currently bootstrap placeholders — see
-[`lambda-src/README.md`](lambda-src/README.md)) and zipped directly via
-`archive_file`, so it's self-contained on the very first `terraform apply`.
+`background-customizable`, `banner-customizable`, `idpButton-customizable`,
+`idpDescription-customizable`, `inputField-customizable`,
+`label-customizable`, `legalText-customizable`, `submitButton-customizable`,
+`textDescription-customizable`, `errorMessage-customizable`
+
+There's no way to add app-specific prefixed class names here (unlike the
+`ui-auth` React components in `node-vlinder-auth`, which do use normal
+app-controlled class names) — this is entirely AWS's fixed vocabulary for
+the hosted UI page.
 
 ## RBAC and tenancy
 
@@ -81,6 +79,46 @@ to `"multi"` and populate `tenants` (keyed by tenantId, with an
 `email_domain` driving the post-confirmation trigger's tenant-resolution
 lookup) for real multi-tenant behavior.
 
+### Multi-tenant with a custom role catalog
+
+```hcl
+module "auth" {
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/cognito_auth?ref=v0.1"
+
+  app_name                = "myapp"
+  deployment_environment  = "prod"
+  route53_zone_id         = "Z1234567890"
+  acm_certificate_arn     = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+
+  tenancy_mode = "multi"
+  tenants = {
+    acme-corp = {
+      name         = "Acme Corp"
+      email_domain = "acme.example.com"
+    }
+    globex = {
+      name         = "Globex"
+      email_domain = "globex.example.com"
+    }
+  }
+
+  roles = {
+    member = {
+      privileges   = []
+      tenant_scope = "tenant"
+    }
+    tenant-admin = {
+      privileges   = ["admin:users:read:own", "admin:users:write:own", "admin:roles:read"]
+      tenant_scope = "tenant"
+    }
+    super-admin = {
+      privileges   = ["admin:users:read:*", "admin:users:write:*", "admin:roles:read"]
+      tenant_scope = "global"
+    }
+  }
+}
+```
+
 ## The bundled admin panel
 
 On by default (`create_admin_panel = true`). Hosted at
@@ -109,7 +147,7 @@ know these values yet).
 | `route53_zone_id` | Route53 hosted zone ID serving the derived hostnames. | `string` |
 | `acm_certificate_arn` | ACM certificate ARN in `us-east-1` covering both derived hostnames. | `string` |
 | `logo_base64` | Base64-encoded hosted-UI logo. Omitted (no custom logo) when null. | `string` |
-| `css` | Hosted-UI CSS override. Defaults to a built-in Vlinder theme when null. | `string` |
+| `css` | Hosted-UI CSS override. Defaults to a built-in placeholder theme when null. | `string` |
 | `domain_prefix` | Hosted-UI domain prefix. Default `"auth"`. | `string` |
 | `allow_self_signup` | Whether users can sign themselves up (pool-wide). Default `true`. | `bool` |
 | `mfa_configuration` | `OFF`, `OPTIONAL`, or `ON`. Default `"OFF"`. | `string` |

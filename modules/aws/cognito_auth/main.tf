@@ -7,6 +7,16 @@ locals {
   hosted_ui_domain   = "${var.domain_prefix}-${local.base_domain}"
   admin_panel_domain = "${var.admin_panel_domain_prefix}-${local.base_domain}"
 
+  # Cognito's hosted-UI CSS customization only recognizes a fixed set of
+  # AWS-defined selectors (*-customizable) -- there's no way to add our own
+  # prefixed class names here, unlike the ui-auth React components in
+  # node-vlinder-auth, which do use normal app-controlled class names. The
+  # full selector list AWS supports: background-customizable,
+  # banner-customizable, idpButton-customizable, idpDescription-customizable,
+  # inputField-customizable, label-customizable, legalText-customizable,
+  # submitButton-customizable, textDescription-customizable,
+  # errorMessage-customizable. This default only styles a placeholder subset;
+  # override var.css with any/all of the above to fully restyle the page.
   default_css   = <<-CSS
     .banner-customizable { background-color: #1b3a5c; }
     .submitButton-customizable { background-color: #1b3a5c; }
@@ -497,6 +507,7 @@ resource "aws_lambda_function" "post_confirmation" {
   handler          = "index.handler"
   runtime          = "nodejs22.x"
   timeout          = 5
+  publish          = true
   filename         = data.archive_file.post_confirmation.output_path
   source_code_hash = data.archive_file.post_confirmation.output_base64sha256
 
@@ -566,6 +577,7 @@ resource "aws_lambda_function" "pre_token_generation" {
   handler          = "index.handler"
   runtime          = "nodejs22.x"
   timeout          = 5
+  publish          = true
   filename         = data.archive_file.pre_token_generation.output_path
   source_code_hash = data.archive_file.pre_token_generation.output_base64sha256
 
@@ -652,6 +664,7 @@ resource "aws_lambda_function" "admin_api" {
   handler          = "index.handler"
   runtime          = "nodejs22.x"
   timeout          = 10
+  publish          = true
   filename         = data.archive_file.admin_api.output_path
   source_code_hash = data.archive_file.admin_api.output_base64sha256
 

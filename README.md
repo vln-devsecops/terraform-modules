@@ -22,7 +22,7 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 | --- | --- |
 | `modules/aws/acm_certificate` | ACM certificate with Route 53 DNS validation, wildcard SANs, and provider-aliased `us-east-1` support |
 | `modules/aws/central_logs` | S3-based central log aggregation for multi-account organisations, with KMS encryption, Glacier lifecycle, cross-account write policy, and optional multi-region CloudTrail |
-| `modules/aws/cognito_auth` | Self-provisioning Cognito auth component: hosted-UI signup/login with Vlinder branding, DynamoDB-backed RBAC (role/privilege separation, single- or multi-tenant), vendored Lambda triggers, and a bundled admin panel + API — minimal input, no consumer-managed Lambda ARNs or tables |
+| `modules/aws/cognito_auth` | Self-provisioning Cognito auth component: hosted-UI signup/login with overridable placeholder branding, DynamoDB-backed RBAC (role/privilege separation, single- or multi-tenant), vendored Lambda triggers, and a bundled admin panel + API — minimal input, no consumer-managed Lambda ARNs or tables |
 | `modules/aws/contact_form` | Self-provisioning contact-form backend: DynamoDB table, public reCAPTCHA-gated submit Lambda, `AWS_IAM`-authorized admin Lambda, each behind its own Function URL |
 | `modules/aws/deployment_bucket` | S3 bucket for Lambda deployment archives, with KMS encryption and versioning |
 | `modules/aws/dynamodb` | DynamoDB table with optional KMS encryption, TTL, and IAM access policies |
