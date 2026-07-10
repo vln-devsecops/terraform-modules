@@ -5,15 +5,9 @@ variable "aws_region" {
 }
 
 variable "app_name" {
-  description = "Application name prefix for the single-tenant example."
+  description = "Application name prefix."
   type        = string
   default     = "example-app"
-}
-
-variable "multi_tenant_app_name" {
-  description = "Application name prefix for the multi-tenant example."
-  type        = string
-  default     = "example-saas"
 }
 
 variable "deployment_environment" {
