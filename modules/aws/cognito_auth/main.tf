@@ -475,9 +475,8 @@ resource "aws_iam_role_policy_attachment" "post_confirmation_logging" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role_policy" "post_confirmation" {
+resource "aws_iam_policy" "post_confirmation" {
   name = "${var.app_name}-${var.deployment_environment}-post-confirmation"
-  role = aws_iam_role.post_confirmation.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -499,6 +498,13 @@ resource "aws_iam_role_policy" "post_confirmation" {
       },
     ]
   })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "post_confirmation_permissions" {
+  role       = aws_iam_role.post_confirmation.name
+  policy_arn = aws_iam_policy.post_confirmation.arn
 }
 
 resource "aws_lambda_function" "post_confirmation" {
@@ -550,9 +556,8 @@ resource "aws_iam_role_policy_attachment" "pre_token_generation_logging" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role_policy" "pre_token_generation" {
+resource "aws_iam_policy" "pre_token_generation" {
   name = "${var.app_name}-${var.deployment_environment}-pre-token-generation"
-  role = aws_iam_role.pre_token_generation.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -569,6 +574,13 @@ resource "aws_iam_role_policy" "pre_token_generation" {
       },
     ]
   })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "pre_token_generation_permissions" {
+  role       = aws_iam_role.pre_token_generation.name
+  policy_arn = aws_iam_policy.pre_token_generation.arn
 }
 
 resource "aws_lambda_function" "pre_token_generation" {
@@ -616,11 +628,10 @@ resource "aws_iam_role_policy_attachment" "admin_api_logging" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role_policy" "admin_api" {
+resource "aws_iam_policy" "admin_api" {
   count = var.create_admin_panel ? 1 : 0
 
   name = "${var.app_name}-${var.deployment_environment}-admin-api"
-  role = aws_iam_role.admin_api[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -654,6 +665,15 @@ resource "aws_iam_role_policy" "admin_api" {
       },
     ]
   })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "admin_api_permissions" {
+  count = var.create_admin_panel ? 1 : 0
+
+  role       = aws_iam_role.admin_api[0].name
+  policy_arn = aws_iam_policy.admin_api[0].arn
 }
 
 resource "aws_lambda_function" "admin_api" {

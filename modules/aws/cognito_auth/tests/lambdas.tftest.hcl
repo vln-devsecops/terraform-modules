@@ -143,12 +143,12 @@ run "post_confirmation_role_can_write_role_assignments_and_manage_groups" {
   command = plan
 
   assert {
-    condition     = strcontains(aws_iam_role_policy.post_confirmation.policy, "cognito-idp:AdminAddUserToGroup")
+    condition     = strcontains(aws_iam_policy.post_confirmation.policy, "cognito-idp:AdminAddUserToGroup")
     error_message = "post_confirmation's role should be able to add users to groups."
   }
 
   assert {
-    condition     = strcontains(aws_iam_role_policy.post_confirmation.policy, "dynamodb:PutItem")
+    condition     = strcontains(aws_iam_policy.post_confirmation.policy, "dynamodb:PutItem")
     error_message = "post_confirmation's role should be able to write role assignments."
   }
 }
@@ -157,12 +157,12 @@ run "admin_api_role_can_manage_users_and_read_roles" {
   command = plan
 
   assert {
-    condition     = strcontains(aws_iam_role_policy.admin_api[0].policy, "cognito-idp:AdminDisableUser")
+    condition     = strcontains(aws_iam_policy.admin_api[0].policy, "cognito-idp:AdminDisableUser")
     error_message = "admin_api's role should be able to disable/enable users."
   }
 
   assert {
-    condition     = strcontains(aws_iam_role_policy.admin_api[0].policy, "dynamodb:Scan")
+    condition     = strcontains(aws_iam_policy.admin_api[0].policy, "dynamodb:Scan")
     error_message = "admin_api's role should be able to scan the role-assignments/roles tables for cross-tenant listing."
   }
 }
