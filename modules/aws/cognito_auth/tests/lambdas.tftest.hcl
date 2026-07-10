@@ -66,7 +66,7 @@ run "three_lambda_functions_are_created_with_the_expected_runtime" {
     condition = (
       aws_lambda_function.post_confirmation.runtime == "nodejs22.x" &&
       aws_lambda_function.pre_token_generation.runtime == "nodejs22.x" &&
-      aws_lambda_function.admin_api.runtime == "nodejs22.x"
+      aws_lambda_function.admin_api[0].runtime == "nodejs22.x"
     )
     error_message = "All three vendored Lambdas should run on nodejs22.x."
   }
@@ -157,12 +157,12 @@ run "admin_api_role_can_manage_users_and_read_roles" {
   command = plan
 
   assert {
-    condition     = strcontains(aws_iam_role_policy.admin_api.policy, "cognito-idp:AdminDisableUser")
+    condition     = strcontains(aws_iam_role_policy.admin_api[0].policy, "cognito-idp:AdminDisableUser")
     error_message = "admin_api's role should be able to disable/enable users."
   }
 
   assert {
-    condition     = strcontains(aws_iam_role_policy.admin_api.policy, "dynamodb:Scan")
+    condition     = strcontains(aws_iam_role_policy.admin_api[0].policy, "dynamodb:Scan")
     error_message = "admin_api's role should be able to scan the role-assignments/roles tables for cross-tenant listing."
   }
 }
