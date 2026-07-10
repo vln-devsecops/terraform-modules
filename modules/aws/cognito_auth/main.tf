@@ -735,3 +735,24 @@ module "admin_api" {
 
   tags = local.common_tags
 }
+
+# --- Admin panel hosting -----------------------------------------------------
+#
+# Unlike the Lambda source, the admin panel's built static assets are NOT
+# vendored into this Terraform module: static_site's own bucket/CloudFront
+# naming is only known after apply, so the actual `aws s3 sync dist/ ...`
+# upload is a deploy-pipeline concern (same as any other static_site
+# consumer), not something Terraform manages here. The admin_api_invoke_url
+# and webapp_client_id outputs below exist so that pipeline can inject
+# runtime config into the built SPA (a config.json read at load time, since
+# Vite env vars are baked in at build time and can't know these values yet).
+module "admin_panel_site" {
+  count  = var.create_admin_panel ? 1 : 0
+  source = "../static_site"
+
+  site_name           = local.admin_panel_domain
+  route53_zone_id     = var.route53_zone_id
+  acm_certificate_arn = var.acm_certificate_arn
+
+  tags = local.common_tags
+}
