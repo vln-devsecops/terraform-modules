@@ -29,16 +29,17 @@ variable "acm_certificate_arn" {
   }
 }
 
-# --- Branding (optional; ships a Vlinder default) --------------------------
+# --- Branding (optional; ships a generic placeholder default, not any --
+# --- particular org's real branding -- override both for production use) --
 
 variable "logo_base64" {
-  description = "Base64-encoded logo image for the hosted-UI sign-in page. Defaults to the module's built-in Vlinder logo when null."
+  description = "Base64-encoded logo image for the hosted-UI sign-in page. Omitted (no custom logo) when null."
   type        = string
   default     = null
 }
 
 variable "css" {
-  description = "CSS override for the hosted-UI sign-in page. Defaults to the module's built-in Vlinder theme when null."
+  description = "CSS override for the hosted-UI sign-in page. Defaults to the module's built-in placeholder theme when null."
   type        = string
   default     = null
 }
