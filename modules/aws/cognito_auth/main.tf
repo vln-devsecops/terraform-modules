@@ -240,7 +240,7 @@ resource "aws_cognito_identity_pool" "this" {
   dynamic "cognito_identity_providers" {
     for_each = merge(
       { for key, client in aws_cognito_user_pool_client.consumer : key => client },
-      var.create_admin_panel ? { admin_panel = aws_cognito_user_pool_client.admin_panel[0] } : {}
+      { for client in aws_cognito_user_pool_client.admin_panel : "admin_panel" => client }
     )
     content {
       client_id               = cognito_identity_providers.value.id
@@ -590,19 +590,25 @@ resource "aws_lambda_permission" "pre_token_generation" {
 }
 
 resource "aws_iam_role" "admin_api" {
+  count = var.create_admin_panel ? 1 : 0
+
   name               = "${var.app_name}-${var.deployment_environment}-admin-api"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
   tags               = local.common_tags
 }
 
 resource "aws_iam_role_policy_attachment" "admin_api_logging" {
-  role       = aws_iam_role.admin_api.name
+  count = var.create_admin_panel ? 1 : 0
+
+  role       = aws_iam_role.admin_api[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 resource "aws_iam_role_policy" "admin_api" {
+  count = var.create_admin_panel ? 1 : 0
+
   name = "${var.app_name}-${var.deployment_environment}-admin-api"
-  role = aws_iam_role.admin_api.id
+  role = aws_iam_role.admin_api[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -639,8 +645,10 @@ resource "aws_iam_role_policy" "admin_api" {
 }
 
 resource "aws_lambda_function" "admin_api" {
+  count = var.create_admin_panel ? 1 : 0
+
   function_name    = "${var.app_name}-${var.deployment_environment}-admin-api"
-  role             = aws_iam_role.admin_api.arn
+  role             = aws_iam_role.admin_api[0].arn
   handler          = "index.handler"
   runtime          = "nodejs22.x"
   timeout          = 10
@@ -658,4 +666,72 @@ resource "aws_lambda_function" "admin_api" {
   tags = local.common_tags
 
   depends_on = [aws_iam_role_policy_attachment.admin_api_logging]
+}
+
+# --- Admin API (bundled, HTTP API + JWT authorizer on this module's own pool) ---
+
+locals {
+  admin_api_issuer_url = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${aws_cognito_user_pool.this.id}"
+
+  # Guarded on create_admin_panel as a whole, not just its consumer: Terraform
+  # evaluates a local's expression whenever anything in the configuration
+  # references it, regardless of whether that reference sits inside a
+  # count = 0 block -- so aws_lambda_function.admin_api[0] must never appear
+  # in this local's expression unless the admin API actually exists.
+  admin_api_routes = var.create_admin_panel ? {
+    list_users = {
+      route_key            = "GET /users"
+      lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
+      authorizer_key       = "cognito_auth"
+    }
+    get_user = {
+      route_key            = "GET /users/{userId}"
+      lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
+      authorizer_key       = "cognito_auth"
+    }
+    set_user_enabled = {
+      route_key            = "PATCH /users/{userId}/enabled"
+      lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
+      authorizer_key       = "cognito_auth"
+    }
+    list_roles = {
+      route_key            = "GET /roles"
+      lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
+      authorizer_key       = "cognito_auth"
+    }
+    assign_role = {
+      route_key            = "PUT /users/{userId}/role"
+      lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
+      authorizer_key       = "cognito_auth"
+    }
+    revoke_role = {
+      route_key            = "DELETE /users/{userId}/role"
+      lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
+      authorizer_key       = "cognito_auth"
+    }
+  } : {}
+}
+
+module "admin_api" {
+  count  = var.create_admin_panel ? 1 : 0
+  source = "../http_api"
+
+  name = "${var.app_name}-${var.deployment_environment}-admin-api"
+
+  jwt_authorizers = {
+    cognito_auth = {
+      issuer_url = local.admin_api_issuer_url
+      audience   = aws_cognito_user_pool_client.admin_panel[*].id
+    }
+  }
+
+  routes = local.admin_api_routes
+
+  tags = local.common_tags
 }
