@@ -310,6 +310,47 @@ resource "aws_cognito_identity_pool_roles_attachment" "this" {
   }
 }
 
+# --- Shared encryption key --------------------------------------------------
+#
+# One CMK for everything this module directly encrypts (the two native
+# reference-data tables below, plus all three Lambda functions' environment
+# variables) -- the sensitive user_role_assignments table gets its own CMK
+# via the composed aws/dynamodb module, which creates a dedicated key by
+# default.
+
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "kms" {
+  # checkov:skip=CKV_AWS_109:Root-access KMS policy intentionally delegates broad permissions to account root
+  # checkov:skip=CKV_AWS_111:Root-access KMS policy intentionally delegates broad permissions to account root
+  # checkov:skip=CKV_AWS_356:Root-access KMS policy intentionally delegates broad permissions to account root
+  statement {
+    sid    = "EnableRootPermissions"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_kms_key" "this" {
+  description             = "CMK for ${var.app_name}-${var.deployment_environment} cognito_auth encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.kms.json
+  tags                    = merge(local.common_tags, { rg = "security" })
+}
+
+resource "aws_kms_alias" "this" {
+  name          = "alias/${var.app_name}-${var.deployment_environment}-cognito-auth"
+  target_key_id = aws_kms_key.this.key_id
+}
+
 # --- RBAC and tenancy -------------------------------------------------------
 #
 # Role is kept separate from privileges: `roles` is a Terraform-seeded catalog
@@ -329,8 +370,13 @@ resource "aws_dynamodb_table" "roles" {
     type = "S"
   }
 
-  server_side_encryption {
+  point_in_time_recovery {
     enabled = true
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.this.arn
   }
 
   tags = local.common_tags
@@ -372,8 +418,13 @@ resource "aws_dynamodb_table" "tenants" {
     projection_type = "ALL"
   }
 
-  server_side_encryption {
+  point_in_time_recovery {
     enabled = true
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.this.arn
   }
 
   tags = local.common_tags
@@ -508,14 +559,23 @@ resource "aws_iam_role_policy_attachment" "post_confirmation_permissions" {
 }
 
 resource "aws_lambda_function" "post_confirmation" {
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
+  # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
   function_name    = "${var.app_name}-${var.deployment_environment}-post-confirmation"
   role             = aws_iam_role.post_confirmation.arn
   handler          = "index.handler"
   runtime          = "nodejs22.x"
   timeout          = 5
   publish          = true
+  kms_key_arn      = aws_kms_key.this.arn
   filename         = data.archive_file.post_confirmation.output_path
   source_code_hash = data.archive_file.post_confirmation.output_base64sha256
+
+  tracing_config {
+    mode = "Active"
+  }
 
   environment {
     variables = {
@@ -584,14 +644,23 @@ resource "aws_iam_role_policy_attachment" "pre_token_generation_permissions" {
 }
 
 resource "aws_lambda_function" "pre_token_generation" {
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
+  # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
   function_name    = "${var.app_name}-${var.deployment_environment}-pre-token-generation"
   role             = aws_iam_role.pre_token_generation.arn
   handler          = "index.handler"
   runtime          = "nodejs22.x"
   timeout          = 5
   publish          = true
+  kms_key_arn      = aws_kms_key.this.arn
   filename         = data.archive_file.pre_token_generation.output_path
   source_code_hash = data.archive_file.pre_token_generation.output_base64sha256
+
+  tracing_config {
+    mode = "Active"
+  }
 
   environment {
     variables = {
@@ -677,6 +746,10 @@ resource "aws_iam_role_policy_attachment" "admin_api_permissions" {
 }
 
 resource "aws_lambda_function" "admin_api" {
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
+  # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
   count = var.create_admin_panel ? 1 : 0
 
   function_name    = "${var.app_name}-${var.deployment_environment}-admin-api"
@@ -685,8 +758,13 @@ resource "aws_lambda_function" "admin_api" {
   runtime          = "nodejs22.x"
   timeout          = 10
   publish          = true
+  kms_key_arn      = aws_kms_key.this.arn
   filename         = data.archive_file.admin_api.output_path
   source_code_hash = data.archive_file.admin_api.output_base64sha256
+
+  tracing_config {
+    mode = "Active"
+  }
 
   environment {
     variables = {
