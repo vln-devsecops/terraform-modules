@@ -174,6 +174,8 @@ jobs:
           AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
           MAIL_TEST_BASE_DOMAIN: ${{ vars.MAIL_TEST_BASE_DOMAIN }}
           MAIL_TEST_ROUTE53_ZONE_ID: ${{ vars.MAIL_TEST_ROUTE53_ZONE_ID }}
+          COGNITO_AUTH_TEST_BASE_DOMAIN: ${{ vars.COGNITO_AUTH_TEST_BASE_DOMAIN }}
+          COGNITO_AUTH_TEST_ROUTE53_ZONE_ID: ${{ vars.COGNITO_AUTH_TEST_ROUTE53_ZONE_ID }}
           TF_LIVE_SUITE_CAPTURE_TFSTATE: "1"
           SUITE_PATH: ${{ matrix.suite }}
         run: |
@@ -263,4 +265,6 @@ jobs:
             echo "Set `TERRAFORM_MODULES_INTEGRATION_ROLE_ARN` and `AWS_REGION` as repository or environment variables so GitHub Actions can assume the role via OIDC."
             echo
             echo "The mail suite also needs `MAIL_TEST_BASE_DOMAIN` and `MAIL_TEST_ROUTE53_ZONE_ID` as repository or environment variables."
+            echo
+            echo "The cognito_auth suite also needs `COGNITO_AUTH_TEST_BASE_DOMAIN` and `COGNITO_AUTH_TEST_ROUTE53_ZONE_ID` as repository or environment variables."
           } >> "${GITHUB_STEP_SUMMARY}"
