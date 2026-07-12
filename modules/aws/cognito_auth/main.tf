@@ -4,8 +4,8 @@ data "aws_route53_zone" "this" {
 
 locals {
   base_domain        = trimsuffix(data.aws_route53_zone.this.name, ".")
-  hosted_ui_domain   = "${var.domain_prefix}-${local.base_domain}"
-  admin_panel_domain = "${var.admin_panel_domain_prefix}-${local.base_domain}"
+  hosted_ui_domain   = "${var.domain_prefix}.${local.base_domain}"
+  admin_panel_domain = "${var.admin_panel_domain_prefix}.${local.base_domain}"
 
   # Cognito's hosted-UI CSS customization only recognizes a fixed set of
   # AWS-defined selectors (*-customizable) -- there's no way to add our own

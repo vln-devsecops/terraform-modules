@@ -29,12 +29,12 @@ locals {
   # concurrent runs or real usage of the shared delegated test domain.
   domain_prefix             = "auth-${var.name_suffix}"
   admin_panel_domain_prefix = "admin-${var.name_suffix}"
-  # cognito_auth joins domain_prefix and the zone's base domain with a
-  # hyphen, not a dot (see modules/aws/cognito_auth/main.tf's hosted_ui_domain
-  # local) -- match that exactly here so the cert's SANs cover what the
-  # module actually requests.
-  hosted_ui_hostname   = "${local.domain_prefix}-${var.base_domain}"
-  admin_panel_hostname = "${local.admin_panel_domain_prefix}-${var.base_domain}"
+  # cognito_auth joins domain_prefix and the zone's base domain with a dot
+  # (see modules/aws/cognito_auth/main.tf's hosted_ui_domain local) -- match
+  # that exactly here so the cert's SANs cover what the module actually
+  # requests.
+  hosted_ui_hostname   = "${local.domain_prefix}.${var.base_domain}"
+  admin_panel_hostname = "${local.admin_panel_domain_prefix}.${var.base_domain}"
 }
 
 resource "aws_acm_certificate" "auth" {

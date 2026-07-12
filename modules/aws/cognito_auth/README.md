@@ -22,7 +22,7 @@ module "auth" {
 ```
 
 The `acm_certificate_arn` must cover both hostnames this module derives
-(`auth-<zone>` for the hosted UI, `admin-<zone>` for the bundled admin panel)
+(`auth.<zone>` for the hosted UI, `admin.<zone>` for the bundled admin panel)
 — a wildcard cert from [`aws/acm_certificate`](../acm_certificate) is the
 simplest way to get that.
 
@@ -122,7 +122,7 @@ module "auth" {
 ## The bundled admin panel
 
 On by default (`create_admin_panel = true`). Hosted at
-`admin-<zone>` via `aws/static_site`, with its own Cognito app client
+`admin.<zone>` via `aws/static_site`, with its own Cognito app client
 (no self-signup client-side — Cognito's `admin_create_user_config` is
 pool-wide, so the real security boundary is the admin API's own privilege
 checks, not which client a caller authenticated through) and its own

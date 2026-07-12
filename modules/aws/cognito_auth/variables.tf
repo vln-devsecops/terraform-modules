@@ -20,7 +20,7 @@ variable "route53_zone_id" {
 }
 
 variable "acm_certificate_arn" {
-  description = "ACM certificate ARN in us-east-1 covering both derived hostnames (\"$${domain_prefix}-<zone>\" and, when create_admin_panel is true, \"$${admin_panel_domain_prefix}-<zone>\"). A wildcard cert from aws/acm_certificate is the simplest way to cover both."
+  description = "ACM certificate ARN in us-east-1 covering both derived hostnames (\"$${domain_prefix}.<zone>\" and, when create_admin_panel is true, \"$${admin_panel_domain_prefix}.<zone>\"). A wildcard cert from aws/acm_certificate is the simplest way to cover both."
   type        = string
 
   validation {
@@ -47,7 +47,7 @@ variable "css" {
 # --- Identity (optional; sane defaults) ------------------------------------
 
 variable "domain_prefix" {
-  description = "Prefix used to derive the Cognito hosted-UI custom domain: \"$${domain_prefix}-<zone-name>\"."
+  description = "Prefix used to derive the Cognito hosted-UI custom domain: \"$${domain_prefix}.<zone-name>\"."
   type        = string
   default     = "auth"
 }
@@ -196,7 +196,7 @@ variable "create_admin_panel" {
 }
 
 variable "admin_panel_domain_prefix" {
-  description = "Prefix used to derive the admin panel's hostname: \"$${admin_panel_domain_prefix}-<zone-name>\". Only used when create_admin_panel is true."
+  description = "Prefix used to derive the admin panel's hostname: \"$${admin_panel_domain_prefix}.<zone-name>\". Only used when create_admin_panel is true."
   type        = string
   default     = "admin"
 }
