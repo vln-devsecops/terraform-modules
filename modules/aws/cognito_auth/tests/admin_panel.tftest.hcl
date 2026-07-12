@@ -87,7 +87,7 @@ run "admin_panel_is_hosted_via_the_shared_static_site_module_by_default" {
   }
 
   assert {
-    condition     = module.admin_panel_site[0].site_name == "admin-devsecops.vlinder.ca"
+    condition     = module.admin_panel_site[0].site_name == "admin.devsecops.vlinder.ca"
     error_message = "The admin panel hostname should use the admin_panel_domain_prefix default over the zone's base domain."
   }
 }
@@ -113,7 +113,7 @@ run "custom_admin_panel_domain_prefix_is_honored" {
   }
 
   assert {
-    condition     = module.admin_panel_site[0].site_name == "console-devsecops.vlinder.ca"
+    condition     = module.admin_panel_site[0].site_name == "console.devsecops.vlinder.ca"
     error_message = "Custom admin_panel_domain_prefix should be honored."
   }
 }

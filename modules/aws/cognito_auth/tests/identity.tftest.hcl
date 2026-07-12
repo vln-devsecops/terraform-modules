@@ -83,8 +83,8 @@ run "defaults_match_doxchange_derived_contract" {
   }
 
   assert {
-    condition     = aws_cognito_user_pool_domain.this.domain == "auth-devsecops.vlinder.ca"
-    error_message = "Hosted-UI domain should default to the auth- prefix over the zone's base domain."
+    condition     = aws_cognito_user_pool_domain.this.domain == "auth.devsecops.vlinder.ca"
+    error_message = "Hosted-UI domain should default to the auth prefix over the zone's base domain."
   }
 
   assert {
@@ -102,7 +102,7 @@ run "custom_domain_prefix_and_self_signup_disabled" {
   }
 
   assert {
-    condition     = aws_cognito_user_pool_domain.this.domain == "login-devsecops.vlinder.ca"
+    condition     = aws_cognito_user_pool_domain.this.domain == "login.devsecops.vlinder.ca"
     error_message = "Custom domain_prefix should be honored."
   }
 
