@@ -26,16 +26,40 @@ mock_provider "aws" {
     }
   }
 
-  mock_resource "aws_cognito_user_pool_domain" {
-    defaults = {
-      cloudfront_distribution         = "d111111abcdef8.cloudfront.net"
-      cloudfront_distribution_zone_id = "Z2FDTNDATAQYW2"
-    }
-  }
-
   mock_resource "aws_cognito_user_pool_client" {
     defaults = {
       id = "clientidplaceholder"
+    }
+  }
+
+  mock_resource "aws_cloudfront_distribution" {
+    defaults = {
+      id                             = "EDFDVBD632BHDS5"
+      arn                            = "arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"
+      domain_name                    = "d111111abcdef8.cloudfront.net"
+      hosted_zone_id                 = "Z2FDTNDATAQYW2"
+      status                         = "Deployed"
+      etag                           = "test"
+      in_progress_validation_batches = 0
+      web_acl_id                     = null
+    }
+  }
+
+  mock_resource "aws_cloudfront_function" {
+    defaults = {
+      arn = "arn:aws:cloudfront::123456789012:function/test"
+    }
+  }
+}
+
+mock_provider "archive" {
+  override_during = plan
+
+  mock_data "archive_file" {
+    defaults = {
+      output_path         = "/tmp/placeholder.zip"
+      output_base64sha256 = "YWJjZGVm"
+      output_size         = 128
     }
   }
 }
@@ -83,8 +107,8 @@ run "defaults_match_doxchange_derived_contract" {
   }
 
   assert {
-    condition     = aws_cognito_user_pool_domain.this.domain == "auth.devsecops.vlinder.ca"
-    error_message = "Hosted-UI domain should default to the auth prefix over the zone's base domain."
+    condition     = contains(tolist(aws_cloudfront_distribution.auth_site.aliases), "auth.devsecops.vlinder.ca")
+    error_message = "Auth site CloudFront distribution alias should default to auth.<zone>."
   }
 
   assert {
@@ -102,8 +126,8 @@ run "custom_domain_prefix_and_self_signup_disabled" {
   }
 
   assert {
-    condition     = aws_cognito_user_pool_domain.this.domain == "login.devsecops.vlinder.ca"
-    error_message = "Custom domain_prefix should be honored."
+    condition     = contains(tolist(aws_cloudfront_distribution.auth_site.aliases), "login.devsecops.vlinder.ca")
+    error_message = "Custom domain_prefix should control the auth site CloudFront alias."
   }
 
   assert {
@@ -112,29 +136,7 @@ run "custom_domain_prefix_and_self_signup_disabled" {
   }
 }
 
-run "custom_css_overrides_the_built_in_default" {
-  command = plan
-
-  variables {
-    css = ".custom { color: red; }"
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_ui_customization.this.css == ".custom { color: red; }"
-    error_message = "Custom css should override the built-in default."
-  }
-}
-
-run "default_css_is_applied_when_none_is_supplied" {
-  command = plan
-
-  assert {
-    condition     = length(aws_cognito_user_pool_ui_customization.this.css) > 0
-    error_message = "A non-empty default css should be applied when none is supplied."
-  }
-}
-
-run "consumer_clients_map_produces_matching_clients_plus_the_admin_panel_client" {
+run "consumer_clients_map_produces_matching_clients_plus_the_auth_site_client" {
   command = plan
 
   variables {
@@ -157,12 +159,26 @@ run "consumer_clients_map_produces_matching_clients_plus_the_admin_panel_client"
   }
 
   assert {
-    condition     = length(aws_cognito_user_pool_client.admin_panel) == 1
-    error_message = "The admin panel's own client should always be created when create_admin_panel is true (the default)."
+    condition     = length(aws_cognito_user_pool_client.auth_site) == 1
+    error_message = "The auth site client should always be created when create_admin_panel is true (the default)."
   }
 }
 
-run "admin_panel_client_is_omitted_when_admin_panel_is_disabled" {
+run "auth_site_client_uses_direct_idp_api_auth_flow" {
+  command = plan
+
+  assert {
+    condition     = contains(one(aws_cognito_user_pool_client.auth_site[*].explicit_auth_flows), "ALLOW_USER_PASSWORD_AUTH")
+    error_message = "The auth site client must enable ALLOW_USER_PASSWORD_AUTH for direct IDP API calls."
+  }
+
+  assert {
+    condition     = one(aws_cognito_user_pool_client.auth_site[*].allowed_oauth_flows_user_pool_client) == false
+    error_message = "The auth site client must not use OAuth/hosted-UI redirect flows."
+  }
+}
+
+run "auth_site_client_is_omitted_when_admin_panel_is_disabled" {
   command = plan
 
   variables {
@@ -170,8 +186,8 @@ run "admin_panel_client_is_omitted_when_admin_panel_is_disabled" {
   }
 
   assert {
-    condition     = length(aws_cognito_user_pool_client.admin_panel) == 0
-    error_message = "The admin panel client should not be created when create_admin_panel is false."
+    condition     = length(aws_cognito_user_pool_client.auth_site) == 0
+    error_message = "The auth site client should not be created when create_admin_panel is false."
   }
 }
 

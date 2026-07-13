@@ -1,0 +1,9 @@
+{
+  "name": "@vln-devsecops/cognito-auth-lambda-build",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build manifest for cognito_auth module's Lambda functions. Terraform installs this at apply time via null_resource.lambda_package; Dependabot bumps the version here when a new release is published to GitHub Packages.",
+  "dependencies": {
+    "@vlinder-auth/lambda-src": "^1.0.0"
+  }
+}

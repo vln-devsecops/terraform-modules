@@ -26,13 +26,6 @@ mock_provider "aws" {
     }
   }
 
-  mock_resource "aws_cognito_user_pool_domain" {
-    defaults = {
-      cloudfront_distribution         = "d111111abcdef8.cloudfront.net"
-      cloudfront_distribution_zone_id = "Z2FDTNDATAQYW2"
-    }
-  }
-
   mock_resource "aws_cognito_user_pool_client" {
     defaults = {
       id = "clientidplaceholder"
@@ -69,6 +62,26 @@ mock_provider "aws" {
       arn = "arn:aws:cloudfront::123456789012:function/test"
     }
   }
+
+  mock_resource "aws_apigatewayv2_api" {
+    defaults = {
+      id            = "apiplaceholder"
+      api_endpoint  = "https://apiplaceholder.execute-api.us-east-1.amazonaws.com"
+      execution_arn = "arn:aws:execute-api:us-east-1:123456789012:apiplaceholder"
+    }
+  }
+}
+
+mock_provider "archive" {
+  override_during = plan
+
+  mock_data "archive_file" {
+    defaults = {
+      output_path         = "/tmp/placeholder.zip"
+      output_base64sha256 = "YWJjZGVm"
+      output_size         = 128
+    }
+  }
 }
 
 variables {
@@ -78,21 +91,46 @@ variables {
   acm_certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/example"
 }
 
-run "admin_panel_is_hosted_via_the_shared_static_site_module_by_default" {
+run "auth_site_is_served_from_a_dedicated_cloudfront_distribution" {
   command = plan
 
   assert {
-    condition     = length(module.admin_panel_site) == 1
-    error_message = "The admin panel should be hosted via the shared static_site module when create_admin_panel is true (the default)."
+    condition     = length(aws_cloudfront_distribution.auth_site.aliases) > 0
+    error_message = "The auth site CloudFront distribution should have at least one alias."
   }
 
   assert {
-    condition     = module.admin_panel_site[0].site_name == "admin.devsecops.vlinder.ca"
-    error_message = "The admin panel hostname should use the admin_panel_domain_prefix default over the zone's base domain."
+    condition     = contains(tolist(aws_cloudfront_distribution.auth_site.aliases), "auth.devsecops.vlinder.ca")
+    error_message = "The auth site distribution alias should be auth.<zone> using the default domain_prefix."
+  }
+
+  assert {
+    condition     = aws_s3_bucket.auth_site.bucket == "myapp-prod-auth-site"
+    error_message = "The auth site S3 bucket should be named <app_name>-<environment>-auth-site."
   }
 }
 
-run "admin_panel_hosting_is_omitted_when_disabled" {
+run "admin_panel_is_at_the_admin_path_not_a_separate_subdomain" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      rule.path_pattern != "*.devsecops.vlinder.ca*"
+    ])
+    error_message = "Admin panel must NOT be served from a separate subdomain -- it is a path (/admin) on the auth site distribution."
+  }
+
+  assert {
+    condition = anytrue([
+      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      rule.path_pattern == "/admin/api/*"
+    ])
+    error_message = "Admin API should be accessible at /admin/api/* on the auth site distribution when create_admin_panel is true."
+  }
+}
+
+run "admin_api_behavior_is_omitted_when_admin_panel_is_disabled" {
   command = plan
 
   variables {
@@ -100,20 +138,53 @@ run "admin_panel_hosting_is_omitted_when_disabled" {
   }
 
   assert {
-    condition     = length(module.admin_panel_site) == 0
-    error_message = "Admin panel hosting should not be provisioned when create_admin_panel is false."
+    condition = !anytrue([
+      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      rule.path_pattern == "/admin/api/*"
+    ])
+    error_message = "The /admin/api/* CloudFront behavior should not be present when create_admin_panel is false."
   }
 }
 
-run "custom_admin_panel_domain_prefix_is_honored" {
+run "auth_site_is_always_provisioned_regardless_of_admin_panel_flag" {
   command = plan
 
   variables {
-    admin_panel_domain_prefix = "console"
+    create_admin_panel = false
   }
 
   assert {
-    condition     = module.admin_panel_site[0].site_name == "console.devsecops.vlinder.ca"
-    error_message = "Custom admin_panel_domain_prefix should be honored."
+    condition     = length(aws_cloudfront_distribution.auth_site.aliases) > 0
+    error_message = "The auth site CloudFront distribution should exist even when create_admin_panel is false."
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket.auth_site.bucket) > 0
+    error_message = "The auth site S3 bucket should exist even when create_admin_panel is false."
+  }
+}
+
+run "custom_domain_prefix_controls_auth_site_hostname" {
+  command = plan
+
+  variables {
+    domain_prefix = "login"
+  }
+
+  assert {
+    condition     = contains(tolist(aws_cloudfront_distribution.auth_site.aliases), "login.devsecops.vlinder.ca")
+    error_message = "Custom domain_prefix should determine the auth site CloudFront alias."
+  }
+}
+
+run "idp_proxy_behavior_is_always_present" {
+  command = plan
+
+  assert {
+    condition = anytrue([
+      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      startswith(rule.path_pattern, "/idp")
+    ])
+    error_message = "The /idp* CloudFront behavior (Cognito IDP proxy) must always be present."
   }
 }

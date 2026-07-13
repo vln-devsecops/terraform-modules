@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/archive"
       version = ">= 2.4"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = ">= 3.0"
+    }
   }
 }
 
@@ -23,25 +27,17 @@ provider "aws" {
 }
 
 locals {
-  # cognito_auth derives its hosted-UI and admin-panel hostnames directly
-  # from the zone name plus a prefix (no built-in per-run uniqueness), so the
-  # suite bakes the random suffix into both prefixes to avoid colliding with
-  # concurrent runs or real usage of the shared delegated test domain.
-  domain_prefix             = "auth-${var.name_suffix}"
-  admin_panel_domain_prefix = "admin-${var.name_suffix}"
-  # cognito_auth joins domain_prefix and the zone's base domain with a dot
-  # (see modules/aws/cognito_auth/main.tf's hosted_ui_domain local) -- match
-  # that exactly here so the cert's SANs cover what the module actually
-  # requests.
-  hosted_ui_hostname   = "${local.domain_prefix}.${var.base_domain}"
-  admin_panel_hostname = "${local.admin_panel_domain_prefix}.${var.base_domain}"
+  # cognito_auth derives the auth site hostname directly from the zone name
+  # plus a prefix (no built-in per-run uniqueness), so the suite bakes the
+  # random suffix into the prefix to avoid colliding with concurrent runs.
+  domain_prefix    = "auth-${var.name_suffix}"
+  auth_site_domain = "${local.domain_prefix}.${var.base_domain}"
 }
 
 resource "aws_acm_certificate" "auth" {
-  provider                  = aws.us_east_1
-  domain_name               = local.hosted_ui_hostname
-  subject_alternative_names = [local.admin_panel_hostname]
-  validation_method         = "DNS"
+  provider          = aws.us_east_1
+  domain_name       = local.auth_site_domain
+  validation_method = "DNS"
 }
 
 resource "aws_route53_record" "auth_validation" {
@@ -75,20 +71,19 @@ module "cognito_auth" {
   route53_zone_id        = var.route53_zone_id
   acm_certificate_arn    = aws_acm_certificate_validation.auth.certificate_arn
 
-  domain_prefix             = local.domain_prefix
-  admin_panel_domain_prefix = local.admin_panel_domain_prefix
+  domain_prefix = local.domain_prefix
 }
 
 output "user_pool_id" {
   value = module.cognito_auth.user_pool_id
 }
 
-output "hosted_ui_domain" {
-  value = module.cognito_auth.hosted_ui_domain
+output "auth_domain" {
+  value = module.cognito_auth.auth_domain
 }
 
-output "hosted_ui_url" {
-  value = module.cognito_auth.hosted_ui_url
+output "auth_url" {
+  value = module.cognito_auth.auth_url
 }
 
 output "admin_panel_url" {

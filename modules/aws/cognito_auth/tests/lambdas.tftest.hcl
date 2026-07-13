@@ -26,13 +26,6 @@ mock_provider "aws" {
     }
   }
 
-  mock_resource "aws_cognito_user_pool_domain" {
-    defaults = {
-      cloudfront_distribution         = "d111111abcdef8.cloudfront.net"
-      cloudfront_distribution_zone_id = "Z2FDTNDATAQYW2"
-    }
-  }
-
   mock_resource "aws_cognito_user_pool_client" {
     defaults = {
       id = "clientidplaceholder"
@@ -48,6 +41,37 @@ mock_provider "aws" {
   mock_resource "aws_dynamodb_table" {
     defaults = {
       arn = "arn:aws:dynamodb:us-east-1:123456789012:table/placeholder"
+    }
+  }
+
+  mock_resource "aws_cloudfront_distribution" {
+    defaults = {
+      id                             = "EDFDVBD632BHDS5"
+      arn                            = "arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"
+      domain_name                    = "d111111abcdef8.cloudfront.net"
+      hosted_zone_id                 = "Z2FDTNDATAQYW2"
+      status                         = "Deployed"
+      etag                           = "test"
+      in_progress_validation_batches = 0
+      web_acl_id                     = null
+    }
+  }
+
+  mock_resource "aws_cloudfront_function" {
+    defaults = {
+      arn = "arn:aws:cloudfront::123456789012:function/test"
+    }
+  }
+}
+
+mock_provider "archive" {
+  override_during = plan
+
+  mock_data "archive_file" {
+    defaults = {
+      output_path         = "/tmp/placeholder.zip"
+      output_base64sha256 = "YWJjZGVm"
+      output_size         = 128
     }
   }
 }

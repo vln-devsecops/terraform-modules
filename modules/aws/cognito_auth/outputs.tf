@@ -13,14 +13,14 @@ output "issuer_url" {
   value       = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${aws_cognito_user_pool.this.id}"
 }
 
-output "hosted_ui_domain" {
-  description = "Cognito hosted-UI custom domain."
-  value       = aws_cognito_user_pool_domain.this.domain
+output "auth_domain" {
+  description = "Auth site domain (CloudFront alias for the login and admin SPA)."
+  value       = local.auth_site_domain
 }
 
-output "hosted_ui_url" {
-  description = "Base HTTPS URL for the Cognito hosted UI."
-  value       = "https://${aws_cognito_user_pool_domain.this.domain}"
+output "auth_url" {
+  description = "Base HTTPS URL for the auth site (login SPA)."
+  value       = "https://${local.auth_site_domain}"
 }
 
 output "client_ids" {
@@ -34,16 +34,21 @@ output "identity_pool_id" {
 }
 
 output "admin_panel_url" {
-  description = "Base HTTPS URL for the bundled admin panel, when create_admin_panel is true; null otherwise."
-  value       = one(module.admin_panel_site[*].site_url)
+  description = "URL for the admin panel within the auth site, when create_admin_panel is true; null otherwise."
+  value       = var.create_admin_panel ? "https://${local.auth_site_domain}/admin" : null
 }
 
 output "admin_api_invoke_url" {
-  description = "Invoke URL for the bundled admin API, when create_admin_panel is true; null otherwise. A deploy pipeline injects this into the admin panel's runtime config."
+  description = "Invoke URL for the bundled admin API, when create_admin_panel is true; null otherwise. A deploy pipeline injects this into the auth site's runtime config."
   value       = one(module.admin_api[*].invoke_url)
 }
 
-output "admin_panel_client_id" {
-  description = "Cognito app client ID for the bundled admin panel, when create_admin_panel is true; null otherwise."
-  value       = one(aws_cognito_user_pool_client.admin_panel[*].id)
+output "auth_site_client_id" {
+  description = "Cognito app client ID for the bundled auth site (used for direct IDP API calls), when create_admin_panel is true; null otherwise."
+  value       = one(aws_cognito_user_pool_client.auth_site[*].id)
+}
+
+output "auth_site_bucket_name" {
+  description = "S3 bucket name for the auth site SPA static assets. A deploy pipeline uploads the built SPA to this bucket."
+  value       = aws_s3_bucket.auth_site.id
 }

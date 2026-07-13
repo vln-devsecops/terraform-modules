@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/archive"
       version = ">= 2.4"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = ">= 3.0"
+    }
   }
 }
 
@@ -26,8 +30,8 @@ module "auth" {
   acm_certificate_arn    = var.acm_certificate_arn
 }
 
-output "hosted_ui_url" {
-  value = module.auth.hosted_ui_url
+output "auth_url" {
+  value = module.auth.auth_url
 }
 
 output "admin_panel_url" {
@@ -37,3 +41,4 @@ output "admin_panel_url" {
 output "issuer_url" {
   value = module.auth.issuer_url
 }
+
