@@ -93,3 +93,15 @@ output "admin_panel_url" {
 output "admin_api_invoke_url" {
   value = module.cognito_auth.admin_api_invoke_url
 }
+
+output "auth_site_bucket_name" {
+  value = module.cognito_auth.auth_site_bucket_name
+}
+
+output "auth_site_client_id" {
+  value = module.cognito_auth.auth_site_client_id
+}
+
+output "role_assignments_table_name" {
+  value = module.cognito_auth.role_assignments_table_name
+}
