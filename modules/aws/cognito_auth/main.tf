@@ -857,7 +857,7 @@ resource "aws_s3_bucket" "auth_site" {
   # checkov:skip=CKV2_AWS_61:S3 deletion protection by policy for OAC-protected public bucket
   # checkov:skip=CKV2_AWS_62:Event notifications not required for OAC-protected public content
   bucket        = local.auth_site_bucket_name
-  force_destroy = false
+  force_destroy = var.auth_site_force_destroy
   tags          = merge(local.common_tags, { rg = "storage" })
 }
 

@@ -72,6 +72,12 @@ module "cognito_auth" {
   acm_certificate_arn    = aws_acm_certificate_validation.auth.certificate_arn
 
   domain_prefix = local.domain_prefix
+
+  # This suite's own e2e run (see run.sh) uploads a real SPA build via
+  # deploy.sh, well beyond the single placeholder object Terraform itself
+  # tracks -- without this, terraform destroy fails with BucketNotEmpty on
+  # every run that gets that far.
+  auth_site_force_destroy = true
 }
 
 output "user_pool_id" {
