@@ -3,26 +3,8 @@ data "aws_route53_zone" "this" {
 }
 
 locals {
-  base_domain        = trimsuffix(data.aws_route53_zone.this.name, ".")
-  hosted_ui_domain   = "${var.domain_prefix}.${local.base_domain}"
-  admin_panel_domain = "${var.admin_panel_domain_prefix}.${local.base_domain}"
-
-  # Cognito's hosted-UI CSS customization only recognizes a fixed set of
-  # AWS-defined selectors (*-customizable) -- there's no way to add our own
-  # prefixed class names here, unlike the ui-auth React components in
-  # node-vlinder-auth, which do use normal app-controlled class names. The
-  # full selector list AWS supports: background-customizable,
-  # banner-customizable, idpButton-customizable, idpDescription-customizable,
-  # inputField-customizable, label-customizable, legalText-customizable,
-  # submitButton-customizable, textDescription-customizable,
-  # errorMessage-customizable. This default only styles a placeholder subset;
-  # override var.css with any/all of the above to fully restyle the page.
-  default_css   = <<-CSS
-    .banner-customizable { background-color: #1b3a5c; }
-    .submitButton-customizable { background-color: #1b3a5c; }
-    .label-customizable { font-weight: 400; }
-  CSS
-  effective_css = coalesce(var.css, local.default_css)
+  base_domain      = trimsuffix(data.aws_route53_zone.this.name, ".")
+  auth_site_domain = "${var.domain_prefix}.${local.base_domain}"
 
   common_tags = merge(var.tags, {
     app         = var.app_name
@@ -37,6 +19,8 @@ locals {
   effective_tenants = var.tenancy_mode == "multi" ? var.tenants : {
     default = { name = "Default", email_domain = null }
   }
+
+  auth_site_bucket_name = "${var.app_name}-${var.deployment_environment}-auth-site"
 }
 
 # --- Identity ---------------------------------------------------------------
@@ -161,43 +145,6 @@ resource "aws_cognito_user_pool" "this" {
   tags = local.common_tags
 }
 
-resource "aws_cognito_user_pool_domain" "this" {
-  domain          = local.hosted_ui_domain
-  certificate_arn = var.acm_certificate_arn
-  user_pool_id    = aws_cognito_user_pool.this.id
-}
-
-resource "aws_route53_record" "hosted_ui_a" {
-  name    = aws_cognito_user_pool_domain.this.domain
-  type    = "A"
-  zone_id = var.route53_zone_id
-
-  alias {
-    evaluate_target_health = false
-    name                   = aws_cognito_user_pool_domain.this.cloudfront_distribution
-    zone_id                = aws_cognito_user_pool_domain.this.cloudfront_distribution_zone_id
-  }
-}
-
-resource "aws_route53_record" "hosted_ui_aaaa" {
-  name    = aws_cognito_user_pool_domain.this.domain
-  type    = "AAAA"
-  zone_id = var.route53_zone_id
-
-  alias {
-    evaluate_target_health = false
-    name                   = aws_cognito_user_pool_domain.this.cloudfront_distribution
-    zone_id                = aws_cognito_user_pool_domain.this.cloudfront_distribution_zone_id
-  }
-}
-
-resource "aws_cognito_user_pool_ui_customization" "this" {
-  client_id    = "ALL"
-  user_pool_id = aws_cognito_user_pool_domain.this.user_pool_id
-  css          = local.effective_css
-  image_file   = var.logo_base64
-}
-
 resource "aws_cognito_user_pool_client" "consumer" {
   for_each = var.clients
 
@@ -214,20 +161,25 @@ resource "aws_cognito_user_pool_client" "consumer" {
   explicit_auth_flows                  = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
 }
 
-resource "aws_cognito_user_pool_client" "admin_panel" {
+resource "aws_cognito_user_pool_client" "auth_site" {
   count = var.create_admin_panel ? 1 : 0
 
-  name         = "${var.app_name}-admin-panel-${var.deployment_environment}"
+  name         = "${var.app_name}-auth-site-${var.deployment_environment}"
   user_pool_id = aws_cognito_user_pool.this.id
 
+  # Direct IDP API auth (USER_PASSWORD_AUTH): the login SPA calls Cognito's
+  # regional IDP endpoint directly via /idp/* on the CloudFront distribution,
+  # bypassing the hosted-UI redirect model entirely. OAuth/PKCE flows are not
+  # used by the SPA itself, so allowed_oauth_flows_user_pool_client is disabled
+  # and no callback/logout URLs are required.
+  #
+  # Auth flow choice: USER_PASSWORD_AUTH is used for first-pass simplicity
+  # over USER_SRP_AUTH (which would require client-side SRP crypto via
+  # amazon-cognito-identity-js). Flag this if SRP is preferred -- it's a
+  # Cognito client config change, not a module API change.
   generate_secret                      = false
-  callback_urls                        = ["https://${local.admin_panel_domain}/"]
-  logout_urls                          = ["https://${local.admin_panel_domain}/"]
-  allowed_oauth_flows_user_pool_client = true
-  allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  supported_identity_providers         = ["COGNITO"]
-  explicit_auth_flows                  = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
+  allowed_oauth_flows_user_pool_client = false
+  explicit_auth_flows                  = ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
 }
 
 resource "aws_cognito_user_group" "this" {
@@ -250,7 +202,7 @@ resource "aws_cognito_identity_pool" "this" {
   dynamic "cognito_identity_providers" {
     for_each = merge(
       { for key, client in aws_cognito_user_pool_client.consumer : key => client },
-      { for client in aws_cognito_user_pool_client.admin_panel : "admin_panel" => client }
+      { for client in aws_cognito_user_pool_client.auth_site : "auth_site" => client }
     )
     content {
       client_id               = cognito_identity_providers.value.id
@@ -475,31 +427,46 @@ module "user_role_assignments" {
   ]
 }
 
-# --- Vendored Lambda functions ----------------------------------------------
+# --- npm-packaged Lambda functions ------------------------------------------
 #
-# Deliberately not composed via aws/lambda: that module expects a pre-built
-# artifact already uploaded to an S3 deployment bucket (falling back to a
-# placeholder "echo" function otherwise), a convention built for app code
-# deployed independently of infra changes. This module's Lambda source is
-# vendored/committed alongside the module itself (see lambda-src/README.md),
-# so zipping it directly via archive_file keeps the module self-contained on
-# the very first apply -- no bucket, no upload step, no ARN to pass in.
+# Lambda source is consumed from @vlinder-auth/lambda-src on GitHub Packages
+# (published from node-vlinder-auth) rather than vendored here, so version
+# bumps flow through Dependabot PRs on lambda-build/package.json. The
+# null_resource downloads the package at apply time; archive_file then zips
+# the installed output for each function handler. Contract tests mock the
+# archive provider so they don't require a live npm install.
+#
+# To install locally before running terraform validate/test:
+#   npm install --prefix modules/aws/cognito_auth/lambda-build
+
+resource "null_resource" "lambda_package" {
+  triggers = {
+    package_json = filemd5("${path.module}/lambda-build/package.json")
+  }
+
+  provisioner "local-exec" {
+    command = "npm install --prefix ${path.module}/lambda-build --ignore-scripts"
+  }
+}
 
 data "archive_file" "post_confirmation" {
+  depends_on  = [null_resource.lambda_package]
   type        = "zip"
-  source_dir  = "${path.module}/lambda-src/post-confirmation"
+  source_dir  = "${path.module}/lambda-build/node_modules/@vlinder-auth/lambda-src/dist/post-confirmation"
   output_path = "${path.module}/.terraform/post-confirmation.zip"
 }
 
 data "archive_file" "pre_token_generation" {
+  depends_on  = [null_resource.lambda_package]
   type        = "zip"
-  source_dir  = "${path.module}/lambda-src/pre-token-generation"
+  source_dir  = "${path.module}/lambda-build/node_modules/@vlinder-auth/lambda-src/dist/pre-token-generation"
   output_path = "${path.module}/.terraform/pre-token-generation.zip"
 }
 
 data "archive_file" "admin_api" {
+  depends_on  = [null_resource.lambda_package]
   type        = "zip"
-  source_dir  = "${path.module}/lambda-src/admin-api"
+  source_dir  = "${path.module}/lambda-build/node_modules/@vlinder-auth/lambda-src/dist/admin-api"
   output_path = "${path.module}/.terraform/admin-api.zip"
 }
 
@@ -838,7 +805,7 @@ module "admin_api" {
   jwt_authorizers = {
     cognito_auth = {
       issuer_url = local.admin_api_issuer_url
-      audience   = aws_cognito_user_pool_client.admin_panel[*].id
+      audience   = aws_cognito_user_pool_client.auth_site[*].id
     }
   }
 
@@ -847,23 +814,314 @@ module "admin_api" {
   tags = local.common_tags
 }
 
-# --- Admin panel hosting -----------------------------------------------------
+# --- Auth site hosting -------------------------------------------------------
 #
-# Unlike the Lambda source, the admin panel's built static assets are NOT
-# vendored into this Terraform module: static_site's own bucket/CloudFront
-# naming is only known after apply, so the actual `aws s3 sync dist/ ...`
-# upload is a deploy-pipeline concern (same as any other static_site
-# consumer), not something Terraform manages here. The admin_api_invoke_url
-# and webapp_client_id outputs below exist so that pipeline can inject
-# runtime config into the built SPA (a config.json read at load time, since
-# Vite env vars are baked in at build time and can't know these values yet).
-module "admin_panel_site" {
-  count  = var.create_admin_panel ? 1 : 0
-  source = "../static_site"
+# A single CloudFront distribution at auth.<zone> replaces both the Cognito
+# hosted-UI custom domain and the former separate admin subdomain:
+#
+#   Default behavior   → S3 origin (OAC): serves the auth + admin SPA.
+#                        A CloudFront Function rewrites extensionless paths to
+#                        /index.html so client-side routing (React Router) works.
+#                        Admin screens live at /admin (client-side route-guarded
+#                        on the caller's JWT permissions claim), not a separate
+#                        hostname -- no separate CloudFront distribution needed.
+#
+#   /idp behavior      → Custom origin: Cognito's regional IDP API
+#                        (cognito-idp.<region>.amazonaws.com). TTL 0, never
+#                        cached. Forwards X-Amz-Target + Content-Type so the
+#                        SPA can call InitiateAuth, SignUp, etc. same-origin
+#                        through CloudFront without CORS. A CloudFront Function
+#                        strips the /idp prefix before forwarding.
+#
+#   /admin/api/* behavior → Custom origin: the admin HTTP API (JWT-protected).
+#                        TTL 0, never cached. Forwards Authorization +
+#                        Content-Type. A CloudFront Function strips /admin/api
+#                        before forwarding. Only provisioned when
+#                        create_admin_panel is true.
+#
+# Branding: the SPA reads its theme at runtime from ui-auth's theme.ts
+# mechanism (which uses CSS custom properties). The former logo_base64 / css
+# variables (which fed Cognito's hosted-UI) are removed -- override theme
+# directly in the SPA's own configuration instead.
+#
+# The actual SPA build (dist/) is a deploy-pipeline concern, not managed by
+# Terraform. The auth_site_bucket_name output lets a pipeline target the
+# correct bucket. A placeholder index.html is created on first apply so the
+# distribution is immediately testable.
 
-  site_name           = local.admin_panel_domain
-  route53_zone_id     = var.route53_zone_id
-  acm_certificate_arn = var.acm_certificate_arn
+# trivy:ignore:AVD-AWS-0132
+resource "aws_s3_bucket" "auth_site" {
+  # checkov:skip=CKV_AWS_18:Access logging optional; caller provides log bucket when needed
+  # checkov:skip=CKV_AWS_21:Versioning not required for OAC-protected public content
+  # checkov:skip=CKV_AWS_144:Cross-region replication not required for OAC-protected public content
+  # checkov:skip=CKV_AWS_145:KMS encryption not required for OAC-protected public content
+  # checkov:skip=CKV2_AWS_61:S3 deletion protection by policy for OAC-protected public bucket
+  # checkov:skip=CKV2_AWS_62:Event notifications not required for OAC-protected public content
+  bucket        = local.auth_site_bucket_name
+  force_destroy = false
+  tags          = merge(local.common_tags, { rg = "storage" })
+}
 
-  tags = local.common_tags
+resource "aws_s3_bucket_public_access_block" "auth_site" {
+  bucket = aws_s3_bucket.auth_site.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_object" "auth_site_placeholder_index" {
+  bucket       = aws_s3_bucket.auth_site.id
+  key          = "index.html"
+  content      = <<-HTML
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>${local.auth_site_domain}</title>
+        <style>body{font-family:system-ui,sans-serif;margin:2rem}</style>
+      </head>
+      <body>
+        <h1>Auth site placeholder</h1>
+        <p>Deploy the auth SPA to this bucket to replace this page.</p>
+      </body>
+    </html>
+  HTML
+  content_type = "text/html; charset=utf-8"
+
+  lifecycle {
+    ignore_changes = [content, content_type, cache_control]
+  }
+}
+
+resource "aws_cloudfront_origin_access_control" "auth_site" {
+  name                              = "${replace(local.auth_site_domain, ".", "-")}-oac"
+  description                       = "Origin access control for ${local.auth_site_domain} SPA"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_function" "spa_viewer_request" {
+  name    = "${replace(local.auth_site_domain, ".", "-")}-spa-vr"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  comment = "SPA route rewriting for ${local.auth_site_domain}"
+  code    = file("${path.module}/templates/spa_viewer_request.js")
+}
+
+resource "aws_cloudfront_function" "idp_proxy_rewrite" {
+  name    = "${replace(local.auth_site_domain, ".", "-")}-idp-vr"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  comment = "Strips /idp prefix before forwarding to Cognito IDP for ${local.auth_site_domain}"
+  code    = file("${path.module}/templates/idp_proxy_rewrite.js")
+}
+
+resource "aws_cloudfront_function" "admin_api_rewrite" {
+  count = var.create_admin_panel ? 1 : 0
+
+  name    = "${replace(local.auth_site_domain, ".", "-")}-admin-api-vr"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  comment = "Strips /admin/api prefix before forwarding to admin HTTP API for ${local.auth_site_domain}"
+  code    = file("${path.module}/templates/admin_api_rewrite.js")
+}
+
+data "aws_iam_policy_document" "auth_site_cloudfront_read" {
+  version = "2012-10-17"
+
+  statement {
+    sid       = "AllowCloudFrontRead"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.auth_site.arn}/*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.auth_site.arn]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "auth_site" {
+  bucket = aws_s3_bucket.auth_site.id
+  policy = data.aws_iam_policy_document.auth_site_cloudfront_read.json
+}
+
+# trivy:ignore:AVD-AWS-0011
+resource "aws_cloudfront_distribution" "auth_site" {
+  # checkov:skip=CKV_AWS_310:Single-origin SPA does not need origin failover
+  # checkov:skip=CKV_AWS_374:Geo restriction intentionally disabled
+  # checkov:skip=CKV2_AWS_32:Response headers policy caller-configurable
+  # checkov:skip=CKV2_AWS_47:No EC2 in this module
+  enabled             = true
+  aliases             = [local.auth_site_domain]
+  default_root_object = "index.html"
+  is_ipv6_enabled     = true
+  http_version        = "http2"
+  price_class         = var.cloudfront_price_class
+
+  # Default origin: S3 bucket serving the auth + admin SPA
+  origin {
+    domain_name              = aws_s3_bucket.auth_site.bucket_regional_domain_name
+    origin_id                = "AuthSiteS3"
+    origin_access_control_id = aws_cloudfront_origin_access_control.auth_site.id
+  }
+
+  # Cognito regional IDP API origin: the SPA calls this same-origin via /idp
+  origin {
+    domain_name = "cognito-idp.${data.aws_region.current.region}.amazonaws.com"
+    origin_id   = "CognitoIdp"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  # Admin API origin: the admin SPA calls this same-origin via /admin/api
+  dynamic "origin" {
+    for_each = var.create_admin_panel ? [one(module.admin_api[*].invoke_url)] : []
+    content {
+      domain_name = regex("https://([^/]+)", origin.value)[0]
+      origin_id   = "AdminApi"
+
+      custom_origin_config {
+        http_port              = 80
+        https_port             = 443
+        origin_protocol_policy = "https-only"
+        origin_ssl_protocols   = ["TLSv1.2"]
+      }
+    }
+  }
+
+  # Default behavior: SPA static assets from S3
+  default_cache_behavior {
+    target_origin_id       = "AuthSiteS3"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    allowed_methods = ["GET", "HEAD", "OPTIONS"]
+    cached_methods  = ["GET", "HEAD", "OPTIONS"]
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_viewer_request.arn
+    }
+  }
+
+  # /idp behavior: proxy to Cognito IDP API (no caching; unauthenticated calls)
+  ordered_cache_behavior {
+    path_pattern           = "/idp*"
+    target_origin_id       = "CognitoIdp"
+    viewer_protocol_policy = "https-only"
+    compress               = false
+
+    allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods  = ["GET", "HEAD"]
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "Content-Type", "X-Amz-Target"]
+      cookies {
+        forward = "none"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.idp_proxy_rewrite.arn
+    }
+  }
+
+  # /admin/api/* behavior: proxy to the admin HTTP API (JWT-protected)
+  dynamic "ordered_cache_behavior" {
+    for_each = var.create_admin_panel ? [one(aws_cloudfront_function.admin_api_rewrite[*].arn)] : []
+    content {
+      path_pattern           = "/admin/api/*"
+      target_origin_id       = "AdminApi"
+      viewer_protocol_policy = "https-only"
+      compress               = false
+
+      allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+      cached_methods  = ["GET", "HEAD"]
+
+      forwarded_values {
+        query_string = true
+        headers      = ["Authorization", "Content-Type"]
+        cookies {
+          forward = "none"
+        }
+      }
+
+      min_ttl     = 0
+      default_ttl = 0
+      max_ttl     = 0
+
+      function_association {
+        event_type   = "viewer-request"
+        function_arn = ordered_cache_behavior.value
+      }
+    }
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    acm_certificate_arn      = var.acm_certificate_arn
+    minimum_protocol_version = "TLSv1.2_2021"
+    ssl_support_method       = "sni-only"
+  }
+
+  tags = merge(local.common_tags, { rg = "compute" })
+}
+
+resource "aws_route53_record" "auth_site_a" {
+  zone_id = var.route53_zone_id
+  name    = local.auth_site_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.auth_site.domain_name
+    zone_id                = aws_cloudfront_distribution.auth_site.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "auth_site_aaaa" {
+  zone_id = var.route53_zone_id
+  name    = local.auth_site_domain
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_cloudfront_distribution.auth_site.domain_name
+    zone_id                = aws_cloudfront_distribution.auth_site.hosted_zone_id
+    evaluate_target_health = false
+  }
 }

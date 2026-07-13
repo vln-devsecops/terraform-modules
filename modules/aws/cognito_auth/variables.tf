@@ -15,45 +15,43 @@ variable "deployment_environment" {
 }
 
 variable "route53_zone_id" {
-  description = "Route53 hosted zone ID that will serve the hosted-UI and admin-panel hostnames this module derives."
+  description = "Route53 hosted zone ID that will serve the auth site hostname this module derives."
   type        = string
 }
 
 variable "acm_certificate_arn" {
-  description = "ACM certificate ARN in us-east-1 covering both derived hostnames (\"$${domain_prefix}.<zone>\" and, when create_admin_panel is true, \"$${admin_panel_domain_prefix}.<zone>\"). A wildcard cert from aws/acm_certificate is the simplest way to cover both."
+  description = "ACM certificate ARN in us-east-1 covering the auth site hostname (\"$${domain_prefix}.<zone>\"). A wildcard cert from aws/acm_certificate is a simple way to cover this and any future subdomains."
   type        = string
 
   validation {
     condition     = can(regex("^arn:aws:acm:us-east-1:", var.acm_certificate_arn))
-    error_message = "acm_certificate_arn must be an ACM certificate in us-east-1 (required for both the Cognito hosted-UI custom domain and the CloudFront-backed admin panel)."
+    error_message = "acm_certificate_arn must be an ACM certificate in us-east-1 (required for CloudFront)."
   }
 }
 
-# --- Branding (optional; ships a generic placeholder default, not any --
-# --- particular org's real branding -- override both for production use) --
+# --- Branding (optional) ------------------------------------------------
 
-variable "logo_base64" {
-  description = "Base64-encoded logo image for the hosted-UI sign-in page. Omitted (no custom logo) when null."
+variable "cloudfront_price_class" {
+  description = "CloudFront price class for the auth site distribution."
   type        = string
-  default     = null
-}
+  default     = "PriceClass_100"
 
-variable "css" {
-  description = "CSS override for the hosted-UI sign-in page. Defaults to the module's built-in placeholder theme when null."
-  type        = string
-  default     = null
+  validation {
+    condition     = contains(["PriceClass_All", "PriceClass_200", "PriceClass_100"], var.cloudfront_price_class)
+    error_message = "cloudfront_price_class must be PriceClass_All, PriceClass_200, or PriceClass_100."
+  }
 }
 
 # --- Identity (optional; sane defaults) ------------------------------------
 
 variable "domain_prefix" {
-  description = "Prefix used to derive the Cognito hosted-UI custom domain: \"$${domain_prefix}.<zone-name>\"."
+  description = "Prefix used to derive the auth site domain: \"$${domain_prefix}.<zone-name>\"."
   type        = string
   default     = "auth"
 }
 
 variable "allow_self_signup" {
-  description = "Whether users can sign themselves up via the hosted UI. When false, only admin-created users can sign in (pool-wide setting -- Cognito has no per-client signup toggle)."
+  description = "Whether users can sign themselves up via the auth site SPA. When false, only admin-created users can sign in (pool-wide setting)."
   type        = bool
   default     = true
 }
@@ -190,15 +188,9 @@ variable "default_role_id" {
 # --- Admin panel (optional; on by default) ---------------------------------
 
 variable "create_admin_panel" {
-  description = "Whether to provision the bundled admin panel (hosting, its own Cognito client, and the admin API behind it). Set false to use only identity + RBAC."
+  description = "Whether to provision the bundled auth site (auth SPA + admin panel, each with its own Cognito client) and the admin API. Set false to use only identity + RBAC with your own frontend."
   type        = bool
   default     = true
-}
-
-variable "admin_panel_domain_prefix" {
-  description = "Prefix used to derive the admin panel's hostname: \"$${admin_panel_domain_prefix}.<zone-name>\". Only used when create_admin_panel is true."
-  type        = string
-  default     = "admin"
 }
 
 # --- Tags -------------------------------------------------------------------
