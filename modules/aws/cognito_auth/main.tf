@@ -823,9 +823,13 @@ module "admin_api" {
 #
 #   /idp behavior      → Custom origin: Cognito's regional IDP API
 #                        (cognito-idp.<region>.amazonaws.com). TTL 0, never
-#                        cached. Forwards X-Amz-Target + Content-Type so the
-#                        SPA can call InitiateAuth, SignUp, etc. same-origin
-#                        through CloudFront without CORS. A CloudFront Function
+#                        cached. Forwards Content-Type via the standard
+#                        allowlist; X-Amz-Target is re-set explicitly by the
+#                        CloudFront Function instead, since CloudFront
+#                        rejects any X-Amz-* header name in that allowlist
+#                        (see idp_proxy_rewrite.js). Lets the SPA call
+#                        InitiateAuth, SignUp, etc. same-origin through
+#                        CloudFront without CORS. The same function also
 #                        strips the /idp prefix before forwarding.
 #
 #   /admin/api/* behavior → Custom origin: the admin HTTP API (JWT-protected).
@@ -1036,9 +1040,15 @@ resource "aws_cloudfront_distribution" "auth_site" {
     allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods  = ["GET", "HEAD"]
 
+    # X-Amz-Target is deliberately not in this allowlist -- CloudFront
+    # rejects any header name starting with "X-Amz-" here at distribution-
+    # config time (AWS's documented origin custom-header denylist), no
+    # exceptions. idp_proxy_rewrite.js re-sets it explicitly on the request
+    # object instead, a separate mechanism CloudFront Functions aren't
+    # subject to the same restriction on.
     forwarded_values {
       query_string = true
-      headers      = ["Authorization", "Content-Type", "X-Amz-Target"]
+      headers      = ["Authorization", "Content-Type"]
       cookies {
         forward = "none"
       }
