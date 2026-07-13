@@ -958,12 +958,15 @@ resource "aws_cloudfront_distribution" "auth_site" {
   # checkov:skip=CKV_AWS_374:Geo restriction intentionally disabled
   # checkov:skip=CKV2_AWS_32:Response headers policy caller-configurable
   # checkov:skip=CKV2_AWS_47:No EC2 in this module
+  # checkov:skip=CKV_AWS_68:WAF is caller-configurable via var.waf_web_acl_arn; not enforced at module level
+  # checkov:skip=CKV_AWS_86:CloudFront access logging is caller-configurable; not enforced at module level
   enabled             = true
   aliases             = [local.auth_site_domain]
   default_root_object = "index.html"
   is_ipv6_enabled     = true
   http_version        = "http2"
   price_class         = var.cloudfront_price_class
+  web_acl_id          = var.waf_web_acl_arn
 
   # Default origin: S3 bucket serving the auth + admin SPA
   origin {
