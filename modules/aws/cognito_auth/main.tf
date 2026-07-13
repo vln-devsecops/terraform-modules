@@ -439,11 +439,14 @@ module "user_role_assignments" {
 # To install locally before running terraform validate/test:
 #   npm install --prefix modules/aws/cognito_auth/lambda-build
 #
-# One zip for the whole dist/ tree (not per-handler zips): the three handler
-# subdirectories (post-confirmation/, pre-token-generation/, admin-api/) all
-# import from a shared/ sibling directory at runtime, so the full dist/ must
-# be present in every deployed package. Handler references include the
-# subdirectory prefix: "<subdir>/handler.handler".
+# The build pipeline (esbuild) produces three self-contained CJS bundles at
+# dist/post-confirmation/handler.js, dist/pre-token-generation/handler.js,
+# and dist/admin-api/handler.js -- each with all dependencies (including the
+# shared/ helpers) inlined. dist/ also contains a package.json marking the
+# directory as "type": "commonjs" so Node loads the .js files as CJS
+# regardless of the source package's ESM type setting. The zip includes the
+# full dist/ tree; handler references use the subdirectory prefix:
+# "<subdir>/handler.handler".
 
 resource "null_resource" "lambda_package" {
   triggers = {
