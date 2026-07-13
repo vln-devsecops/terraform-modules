@@ -92,12 +92,46 @@ run "three_lambda_functions_are_created_with_the_expected_runtime" {
       aws_lambda_function.pre_token_generation.runtime == "nodejs22.x" &&
       aws_lambda_function.admin_api[0].runtime == "nodejs22.x"
     )
-    error_message = "All three vendored Lambdas should run on nodejs22.x."
+    error_message = "All three Lambdas should run on nodejs22.x."
+  }
+}
+
+run "lambda_handler_paths_match_dist_layout" {
+  command = plan
+
+  # The package builds to dist/{post-confirmation,pre-token-generation,admin-api,shared}/
+  # handler.js in each subdirectory. The shared/ directory sits at the zip root
+  # (dist/ is zipped whole), so all three handlers can resolve ../shared/* at
+  # runtime. Handler = "<subdir>/<file-without-ext>.<exported-fn>".
+  assert {
+    condition     = aws_lambda_function.post_confirmation.handler == "post-confirmation/handler.handler"
+    error_message = "post_confirmation handler must be 'post-confirmation/handler.handler' to match dist layout."
   }
 
   assert {
-    condition     = aws_lambda_function.post_confirmation.handler == "index.handler"
-    error_message = "Handler entrypoint should match the vendored index.js contract."
+    condition     = aws_lambda_function.pre_token_generation.handler == "pre-token-generation/handler.handler"
+    error_message = "pre_token_generation handler must be 'pre-token-generation/handler.handler' to match dist layout."
+  }
+
+  assert {
+    condition     = aws_lambda_function.admin_api[0].handler == "admin-api/handler.handler"
+    error_message = "admin_api handler must be 'admin-api/handler.handler' to match dist layout."
+  }
+}
+
+run "all_three_lambdas_share_the_same_zip" {
+  command = plan
+
+  # One zip for the full dist/ tree (shared/ present at root) rather than
+  # per-handler zips (which would leave shared/ out of each package).
+  assert {
+    condition     = aws_lambda_function.post_confirmation.filename == aws_lambda_function.pre_token_generation.filename
+    error_message = "post_confirmation and pre_token_generation must share one zip so dist/shared/ is available to both."
+  }
+
+  assert {
+    condition     = aws_lambda_function.post_confirmation.filename == aws_lambda_function.admin_api[0].filename
+    error_message = "admin_api must share the same zip as the trigger Lambdas so dist/shared/ is available."
   }
 }
 

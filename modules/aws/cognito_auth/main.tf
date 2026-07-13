@@ -433,11 +433,17 @@ module "user_role_assignments" {
 # (published from node-vlinder-auth) rather than vendored here, so version
 # bumps flow through Dependabot PRs on lambda-build/package.json. The
 # null_resource downloads the package at apply time; archive_file then zips
-# the installed output for each function handler. Contract tests mock the
-# archive provider so they don't require a live npm install.
+# the installed output. Contract tests mock the archive provider so they
+# don't require a live npm install.
 #
 # To install locally before running terraform validate/test:
 #   npm install --prefix modules/aws/cognito_auth/lambda-build
+#
+# One zip for the whole dist/ tree (not per-handler zips): the three handler
+# subdirectories (post-confirmation/, pre-token-generation/, admin-api/) all
+# import from a shared/ sibling directory at runtime, so the full dist/ must
+# be present in every deployed package. Handler references include the
+# subdirectory prefix: "<subdir>/handler.handler".
 
 resource "null_resource" "lambda_package" {
   triggers = {
@@ -449,25 +455,11 @@ resource "null_resource" "lambda_package" {
   }
 }
 
-data "archive_file" "post_confirmation" {
+data "archive_file" "lambda_package" {
   depends_on  = [null_resource.lambda_package]
   type        = "zip"
-  source_dir  = "${path.module}/lambda-build/node_modules/@vlinder-auth/lambda-src/dist/post-confirmation"
-  output_path = "${path.module}/.terraform/post-confirmation.zip"
-}
-
-data "archive_file" "pre_token_generation" {
-  depends_on  = [null_resource.lambda_package]
-  type        = "zip"
-  source_dir  = "${path.module}/lambda-build/node_modules/@vlinder-auth/lambda-src/dist/pre-token-generation"
-  output_path = "${path.module}/.terraform/pre-token-generation.zip"
-}
-
-data "archive_file" "admin_api" {
-  depends_on  = [null_resource.lambda_package]
-  type        = "zip"
-  source_dir  = "${path.module}/lambda-build/node_modules/@vlinder-auth/lambda-src/dist/admin-api"
-  output_path = "${path.module}/.terraform/admin-api.zip"
+  source_dir  = "${path.module}/lambda-build/node_modules/@vlinder-auth/lambda-src/dist"
+  output_path = "${path.module}/.terraform/lambda-package.zip"
 }
 
 data "aws_iam_policy_document" "lambda_assume_role" {
@@ -532,13 +524,13 @@ resource "aws_lambda_function" "post_confirmation" {
   # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
   function_name    = "${var.app_name}-${var.deployment_environment}-post-confirmation"
   role             = aws_iam_role.post_confirmation.arn
-  handler          = "index.handler"
+  handler          = "post-confirmation/handler.handler"
   runtime          = "nodejs22.x"
   timeout          = 5
   publish          = true
   kms_key_arn      = aws_kms_key.this.arn
-  filename         = data.archive_file.post_confirmation.output_path
-  source_code_hash = data.archive_file.post_confirmation.output_base64sha256
+  filename         = data.archive_file.lambda_package.output_path
+  source_code_hash = data.archive_file.lambda_package.output_base64sha256
 
   tracing_config {
     mode = "Active"
@@ -617,13 +609,13 @@ resource "aws_lambda_function" "pre_token_generation" {
   # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
   function_name    = "${var.app_name}-${var.deployment_environment}-pre-token-generation"
   role             = aws_iam_role.pre_token_generation.arn
-  handler          = "index.handler"
+  handler          = "pre-token-generation/handler.handler"
   runtime          = "nodejs22.x"
   timeout          = 5
   publish          = true
   kms_key_arn      = aws_kms_key.this.arn
-  filename         = data.archive_file.pre_token_generation.output_path
-  source_code_hash = data.archive_file.pre_token_generation.output_base64sha256
+  filename         = data.archive_file.lambda_package.output_path
+  source_code_hash = data.archive_file.lambda_package.output_base64sha256
 
   tracing_config {
     mode = "Active"
@@ -721,13 +713,13 @@ resource "aws_lambda_function" "admin_api" {
 
   function_name    = "${var.app_name}-${var.deployment_environment}-admin-api"
   role             = aws_iam_role.admin_api[0].arn
-  handler          = "index.handler"
+  handler          = "admin-api/handler.handler"
   runtime          = "nodejs22.x"
   timeout          = 10
   publish          = true
   kms_key_arn      = aws_kms_key.this.arn
-  filename         = data.archive_file.admin_api.output_path
-  source_code_hash = data.archive_file.admin_api.output_base64sha256
+  filename         = data.archive_file.lambda_package.output_path
+  source_code_hash = data.archive_file.lambda_package.output_base64sha256
 
   tracing_config {
     mode = "Active"
