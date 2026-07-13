@@ -429,7 +429,7 @@ module "user_role_assignments" {
 
 # --- npm-packaged Lambda functions ------------------------------------------
 #
-# Lambda source is consumed from @vln-devsecops/lambda-src on GitHub Packages
+# Lambda source is consumed from @vln-devsecops/auth-lambda on GitHub Packages
 # (published from node-vlinder-auth) rather than vendored here, so version
 # bumps flow through Dependabot PRs on lambda-build/package.json. The
 # null_resource downloads the package at apply time; archive_file then zips
@@ -461,7 +461,7 @@ resource "null_resource" "lambda_package" {
 data "archive_file" "lambda_package" {
   depends_on  = [null_resource.lambda_package]
   type        = "zip"
-  source_dir  = "${path.module}/lambda-build/node_modules/@vln-devsecops/lambda-src/dist"
+  source_dir  = "${path.module}/lambda-build/node_modules/@vln-devsecops/auth-lambda/dist"
   output_path = "${path.module}/.terraform/lambda-package.zip"
 }
 
