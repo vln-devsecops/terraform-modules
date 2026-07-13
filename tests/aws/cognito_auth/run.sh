@@ -67,3 +67,55 @@ found = {
 missing = expected_types - found
 assert not missing, f"missing alias record types for auth site domain: {sorted(missing)}"
 PY
+
+# --- Deploy the auth-site SPA and run the BDD e2e suite ---------------------
+#
+# node-vlinder-auth is a separate repo. CI checks it out as a nested
+# subdirectory of this checkout (see ct_terraform_integration.yml); local
+# dev workspaces typically have it as a sibling of terraform-modules
+# instead. Try both layouts; skip this whole block (with a clear message,
+# not a hard failure) if neither is found, so a bare terraform-modules
+# checkout can still run the rest of the suite.
+resolve_node_vlinder_auth_dir() {
+  local candidate
+  for candidate in \
+    "${script_dir}/../../../node-vlinder-auth" \
+    "${script_dir}/../../../../node-vlinder-auth"; do
+    if [ -d "${candidate}/packages/auth-site" ]; then
+      (cd "${candidate}" && pwd)
+      return 0
+    fi
+  done
+  return 1
+}
+
+node_vlinder_auth_dir="$(resolve_node_vlinder_auth_dir || true)"
+
+if [ -z "${node_vlinder_auth_dir}" ]; then
+  printf '%s\n' "node-vlinder-auth checkout not found (tried CI-nested and sibling-workspace layouts); skipping auth-site SPA deploy and e2e suite." >&2
+else
+  auth_site_bucket_name="$(terraform -chdir="${script_dir}" output -raw auth_site_bucket_name)"
+  auth_site_client_id="$(terraform -chdir="${script_dir}" output -raw auth_site_client_id)"
+  role_assignments_table_name="$(terraform -chdir="${script_dir}" output -raw role_assignments_table_name)"
+  auth_url="$(terraform -chdir="${script_dir}" output -raw auth_url)"
+
+  printf 'Deploying auth-site SPA to %s...\n' "${auth_site_bucket_name}"
+  "${node_vlinder_auth_dir}/packages/auth-site/scripts/deploy.sh" \
+    --bucket "${auth_site_bucket_name}" \
+    --client-id "${auth_site_client_id}"
+
+  printf 'Running e2e suite against %s...\n' "${auth_url}"
+  (
+    cd "${node_vlinder_auth_dir}"
+    npm install --no-audit --no-fund
+
+    cd e2e
+    npx playwright install chromium --with-deps
+
+    export E2E_BASE_URL="${auth_url}"
+    export E2E_USER_POOL_ID="${user_pool_id}"
+    export E2E_ROLE_ASSIGNMENTS_TABLE="${role_assignments_table_name}"
+    export AWS_REGION="${TF_VAR_aws_region}"
+    npm run test:live
+  )
+fi

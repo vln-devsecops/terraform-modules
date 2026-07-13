@@ -142,6 +142,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # node-vlinder-auth is a separate, private repo (the auth-site SPA
+      # source and the BDD e2e suite live there, not here). The default
+      # GITHUB_TOKEN is scoped to this repo only and cannot check out a
+      # different private repo in the org -- this requires a PAT (classic or
+      # fine-grained, contents:read on node-vlinder-auth) stored as the
+      # NODE_VLINDER_AUTH_PAT secret. Without it, this step is skipped and
+      # run.sh's own resolve_node_vlinder_auth_dir() falls through to
+      # printing a warning and skipping the SPA deploy + e2e suite, rather
+      # than failing the whole live suite.
+      - name: Checkout node-vlinder-auth (auth-site SPA + e2e suite, cognito_auth suite only)
+        if: contains(matrix.suite, 'cognito_auth') && vars.NODE_VLINDER_AUTH_CHECKOUT_ENABLED == 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: vln-devsecops/node-vlinder-auth
+          path: node-vlinder-auth
+          token: ${{ secrets.NODE_VLINDER_AUTH_PAT }}
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
