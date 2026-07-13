@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -176,6 +177,7 @@ jobs:
           MAIL_TEST_ROUTE53_ZONE_ID: ${{ vars.MAIL_TEST_ROUTE53_ZONE_ID }}
           COGNITO_AUTH_TEST_BASE_DOMAIN: ${{ vars.COGNITO_AUTH_TEST_BASE_DOMAIN }}
           COGNITO_AUTH_TEST_ROUTE53_ZONE_ID: ${{ vars.COGNITO_AUTH_TEST_ROUTE53_ZONE_ID }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TF_LIVE_SUITE_CAPTURE_TFSTATE: "1"
           SUITE_PATH: ${{ matrix.suite }}
         run: |
