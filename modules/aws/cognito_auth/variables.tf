@@ -42,6 +42,12 @@ variable "cloudfront_price_class" {
   }
 }
 
+variable "waf_web_acl_arn" {
+  description = "ARN of a WAF web ACL in us-east-1 to associate with the auth site CloudFront distribution. Null (the default) disables WAF."
+  type        = string
+  default     = null
+}
+
 # --- Identity (optional; sane defaults) ------------------------------------
 
 variable "domain_prefix" {
