@@ -52,3 +52,8 @@ output "auth_site_bucket_name" {
   description = "S3 bucket name for the auth site SPA static assets. A deploy pipeline uploads the built SPA to this bucket."
   value       = aws_s3_bucket.auth_site.id
 }
+
+output "role_assignments_table_name" {
+  description = "DynamoDB table name backing user role assignments. Exposed for test/ops tooling that needs to seed or inspect role assignments directly (e.g. bootstrapping the first admin) -- normal app code should go through the admin API, not this table, wherever possible."
+  value       = module.user_role_assignments.table_name
+}
