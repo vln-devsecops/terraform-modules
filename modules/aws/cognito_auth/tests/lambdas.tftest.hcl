@@ -44,6 +44,15 @@ mock_provider "aws" {
     }
   }
 
+  # The Lambda IAM policies interpolate CMK ARNs (table encryption keys);
+  # without a plan-time default the whole jsonencoded policy string becomes
+  # unknown and the strcontains assertions below can't evaluate.
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:us-east-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+    }
+  }
+
   mock_resource "aws_cloudfront_distribution" {
     defaults = {
       id                             = "EDFDVBD632BHDS5"
@@ -222,5 +231,29 @@ run "admin_api_role_can_manage_users_and_read_roles" {
   assert {
     condition     = strcontains(aws_iam_policy.admin_api[0].policy, "dynamodb:Scan")
     error_message = "admin_api's role should be able to scan the role-assignments/roles tables for cross-tenant listing."
+  }
+}
+
+run "all_lambda_roles_can_use_the_table_encryption_keys" {
+  command = plan
+
+  # Every table is CMK-encrypted and DynamoDB requires the caller to hold
+  # KMS permissions on the table's key -- a table-arn grant alone fails at
+  # runtime with kms:Decrypt AccessDeniedException on the first real
+  # invocation, which is exactly how this was originally caught (by the
+  # live e2e suite; no plan-time check can see it).
+  assert {
+    condition     = strcontains(aws_iam_policy.pre_token_generation.policy, "kms:Decrypt")
+    error_message = "pre_token_generation must be able to decrypt the CMK-encrypted tables it reads."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.post_confirmation.policy, "kms:Decrypt")
+    error_message = "post_confirmation must be able to use the CMKs of the tables it reads/writes."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.admin_api[0].policy, "kms:Decrypt")
+    error_message = "admin_api must be able to use the CMKs of the tables it reads/writes."
   }
 }

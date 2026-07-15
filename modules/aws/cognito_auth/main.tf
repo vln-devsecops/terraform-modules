@@ -509,6 +509,14 @@ resource "aws_iam_policy" "post_confirmation" {
         Action   = ["cognito-idp:AdminAddUserToGroup"]
         Resource = [aws_cognito_user_pool.this.arn]
       },
+      # CMK access for the tenants table (aws_kms_key.this) and the
+      # role_assignments table (its own key) -- see the matching statement
+      # on aws_iam_policy.pre_token_generation for the full rationale.
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+        Resource = [aws_kms_key.this.arn, module.user_role_assignments.kms_key_arn]
+      },
     ]
   })
 
@@ -593,6 +601,19 @@ resource "aws_iam_policy" "pre_token_generation" {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem"]
         Resource = [aws_dynamodb_table.roles.arn]
+      },
+      # Every table this Lambda touches is encrypted with a customer-managed
+      # CMK (roles/tenants + the Lambda's own env vars use aws_kms_key.this;
+      # role_assignments has its own dedicated key), and DynamoDB requires
+      # the *caller* to hold KMS permissions on the table's key -- table-arn
+      # grants alone produce a runtime kms:Decrypt AccessDeniedException on
+      # first invocation. GenerateDataKey is included even for read paths:
+      # DynamoDB's table-level data-key caching can trigger it on the
+      # caller's credentials regardless of the operation being a read.
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+        Resource = [aws_kms_key.this.arn, module.user_role_assignments.kms_key_arn]
       },
     ]
   })
@@ -693,6 +714,14 @@ resource "aws_iam_policy" "admin_api" {
           "cognito-idp:AdminEnableUser",
         ]
         Resource = [aws_cognito_user_pool.this.arn]
+      },
+      # CMK access for the roles table (aws_kms_key.this) and the
+      # role_assignments table (its own key) -- see the matching statement
+      # on aws_iam_policy.pre_token_generation for the full rationale.
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+        Resource = [aws_kms_key.this.arn, module.user_role_assignments.kms_key_arn]
       },
     ]
   })
