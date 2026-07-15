@@ -1,7 +1,7 @@
-// Viewer-request handler for the /idp/* cache behavior.
-// Strips the /idp prefix so that requests to /idp (and any sub-path) are
-// forwarded to Cognito's regional IDP API as root-relative paths.
-// Example: POST /idp -> POST / on cognito-idp.<region>.amazonaws.com
+// Viewer-request handler for the /api/v1/idp* cache behavior.
+// Strips the /api/v1/idp prefix so that requests to it (and any sub-path)
+// are forwarded to Cognito's regional IDP API as root-relative paths.
+// Example: POST /api/v1/idp -> POST / on cognito-idp.<region>.amazonaws.com
 //
 // Also re-sets X-Amz-Target explicitly. CloudFront's forwarded_values
 // (and origin-request-policy) header allowlisting rejects any header name
@@ -17,7 +17,7 @@
 // here and re-set explicitly, bypassing the allowlist entirely.
 function handler(event) {
   var request = event.request;
-  request.uri = request.uri.replace(/^\/idp/, '') || '/';
+  request.uri = request.uri.replace(/^\/api\/v1\/idp/, '') || '/';
 
   var target = request.headers['x-amz-target'];
   if (target && target.value) {
