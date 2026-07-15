@@ -124,9 +124,9 @@ run "admin_panel_is_at_the_admin_path_not_a_separate_subdomain" {
   assert {
     condition = anytrue([
       for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
-      rule.path_pattern == "/admin/api/*"
+      rule.path_pattern == "/api/v1/*"
     ])
-    error_message = "Admin API should be accessible at /admin/api/* on the auth site distribution when create_admin_panel is true."
+    error_message = "Admin API should be accessible at /api/v1/* on the auth site distribution when create_admin_panel is true."
   }
 }
 
@@ -140,9 +140,9 @@ run "admin_api_behavior_is_omitted_when_admin_panel_is_disabled" {
   assert {
     condition = !anytrue([
       for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
-      rule.path_pattern == "/admin/api/*"
+      rule.path_pattern == "/api/v1/*"
     ])
-    error_message = "The /admin/api/* CloudFront behavior should not be present when create_admin_panel is false."
+    error_message = "The /api/v1/* CloudFront behavior should not be present when create_admin_panel is false."
   }
 }
 
@@ -183,8 +183,8 @@ run "idp_proxy_behavior_is_always_present" {
   assert {
     condition = anytrue([
       for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
-      startswith(rule.path_pattern, "/idp")
+      startswith(rule.path_pattern, "/api/v1/idp")
     ])
-    error_message = "The /idp* CloudFront behavior (Cognito IDP proxy) must always be present."
+    error_message = "The /api/v1/idp* CloudFront behavior (Cognito IDP proxy) must always be present."
   }
 }

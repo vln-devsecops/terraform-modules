@@ -175,7 +175,7 @@ resource "aws_cognito_user_pool_client" "auth_site" {
   user_pool_id = aws_cognito_user_pool.this.id
 
   # Direct IDP API auth (USER_PASSWORD_AUTH): the login SPA calls Cognito's
-  # regional IDP endpoint directly via /idp/* on the CloudFront distribution,
+  # regional IDP endpoint directly via /api/v1/idp* on the CloudFront distribution,
   # bypassing the hosted-UI redirect model entirely. OAuth/PKCE flows are not
   # used by the SPA itself, so allowed_oauth_flows_user_pool_client is disabled
   # and no callback/logout URLs are required.
@@ -857,7 +857,7 @@ module "admin_api" {
 #                        on the caller's JWT permissions claim), not a separate
 #                        hostname -- no separate CloudFront distribution needed.
 #
-#   /idp behavior      → Custom origin: Cognito's regional IDP API
+#   /api/v1/idp* behavior → Custom origin: Cognito's regional IDP API
 #                        (cognito-idp.<region>.amazonaws.com). TTL 0, never
 #                        cached. Forwards Content-Type via the standard
 #                        allowlist; X-Amz-Target is re-set explicitly by the
@@ -866,11 +866,11 @@ module "admin_api" {
 #                        (see idp_proxy_rewrite.js). Lets the SPA call
 #                        InitiateAuth, SignUp, etc. same-origin through
 #                        CloudFront without CORS. The same function also
-#                        strips the /idp prefix before forwarding.
+#                        strips the /api/v1/idp prefix before forwarding.
 #
-#   /admin/api/* behavior → Custom origin: the admin HTTP API (JWT-protected).
+#   /api/v1/* behavior → Custom origin: the admin HTTP API (JWT-protected),
 #                        TTL 0, never cached. Forwards Authorization +
-#                        Content-Type. A CloudFront Function strips /admin/api
+#                        Content-Type. A CloudFront Function strips /api/v1
 #                        before forwarding. Only provisioned when
 #                        create_admin_panel is true.
 #
@@ -951,7 +951,7 @@ resource "aws_cloudfront_function" "idp_proxy_rewrite" {
   name    = "${replace(local.auth_site_domain, ".", "-")}-idp-vr"
   runtime = "cloudfront-js-2.0"
   publish = true
-  comment = "Strips /idp prefix before forwarding to Cognito IDP for ${local.auth_site_domain}"
+  comment = "Strips /api/v1/idp prefix before forwarding to Cognito IDP for ${local.auth_site_domain}"
   code    = file("${path.module}/templates/idp_proxy_rewrite.js")
 }
 
@@ -961,7 +961,7 @@ resource "aws_cloudfront_function" "admin_api_rewrite" {
   name    = "${replace(local.auth_site_domain, ".", "-")}-admin-api-vr"
   runtime = "cloudfront-js-2.0"
   publish = true
-  comment = "Strips /admin/api prefix before forwarding to admin HTTP API for ${local.auth_site_domain}"
+  comment = "Strips /api/v1 prefix before forwarding to admin HTTP API for ${local.auth_site_domain}"
   code    = file("${path.module}/templates/admin_api_rewrite.js")
 }
 
@@ -1015,7 +1015,7 @@ resource "aws_cloudfront_distribution" "auth_site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.auth_site.id
   }
 
-  # Cognito regional IDP API origin: the SPA calls this same-origin via /idp
+  # Cognito regional IDP API origin: the SPA calls this same-origin via /api/v1/idp
   origin {
     domain_name = "cognito-idp.${data.aws_region.current.region}.amazonaws.com"
     origin_id   = "CognitoIdp"
@@ -1028,7 +1028,7 @@ resource "aws_cloudfront_distribution" "auth_site" {
     }
   }
 
-  # Admin API origin: the admin SPA calls this same-origin via /admin/api
+  # Admin API origin: the admin SPA calls this same-origin via /api/v1
   dynamic "origin" {
     for_each = var.create_admin_panel ? [one(module.admin_api[*].invoke_url)] : []
     content {
@@ -1066,9 +1066,9 @@ resource "aws_cloudfront_distribution" "auth_site" {
     }
   }
 
-  # /idp behavior: proxy to Cognito IDP API (no caching; unauthenticated calls)
+  # /api/v1/idp* behavior: proxy to Cognito IDP API (no caching; unauthenticated calls)
   ordered_cache_behavior {
-    path_pattern           = "/idp*"
+    path_pattern           = "/api/v1/idp*"
     target_origin_id       = "CognitoIdp"
     viewer_protocol_policy = "https-only"
     compress               = false
@@ -1100,11 +1100,11 @@ resource "aws_cloudfront_distribution" "auth_site" {
     }
   }
 
-  # /admin/api/* behavior: proxy to the admin HTTP API (JWT-protected)
+  # /api/v1/* behavior: proxy to the admin HTTP API (JWT-protected)
   dynamic "ordered_cache_behavior" {
     for_each = var.create_admin_panel ? [one(aws_cloudfront_function.admin_api_rewrite[*].arn)] : []
     content {
-      path_pattern           = "/admin/api/*"
+      path_pattern           = "/api/v1/*"
       target_origin_id       = "AdminApi"
       viewer_protocol_policy = "https-only"
       compress               = false
