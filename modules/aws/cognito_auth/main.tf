@@ -112,9 +112,16 @@ resource "aws_cognito_user_pool" "this" {
   }
 
   verification_message_template {
-    default_email_option = "CONFIRM_WITH_LINK"
+    # Not CONFIRM_WITH_LINK: verification links target the Cognito user pool
+    # domain's /confirmUser endpoint, and this module deliberately has no
+    # such domain (own CloudFront auth site instead of the hosted UI). With
+    # LINK and no domain, every live SignUp call is rejected with "there
+    # does not exist a valid use pool domain associated with the user pool".
+    # Code-based confirmation has no domain dependency; the bundled auth
+    # site provides the code-entry form.
+    default_email_option = "CONFIRM_WITH_CODE"
     email_subject        = "Please verify your email address"
-    email_message        = "Hello {username}, please verify your email address by clicking on the link: {####}"
+    email_message        = "Hello {username}, your email verification code is {####}"
   }
 
   dynamic "email_configuration" {
