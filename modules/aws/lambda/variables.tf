@@ -148,3 +148,23 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "cors" {
+  description = <<-EOT
+    Optional CORS configuration for the Lambda Function URL (only applies when create_url is true).
+    When set, AWS answers OPTIONS preflight requests directly at the Function URL layer without
+    invoking the Lambda, and stamps the configured headers onto every response - prefer this over
+    hand-coding CORS/OPTIONS handling in the function itself. Omit (the default) to leave CORS
+    entirely unset, which is not the same as permissive: unset means the browser gets no
+    Access-Control-* headers at all, so cross-origin callers are blocked by default.
+  EOT
+  type = object({
+    allow_credentials = optional(bool)
+    allow_headers     = optional(list(string))
+    allow_methods     = optional(list(string))
+    allow_origins     = optional(list(string))
+    expose_headers    = optional(list(string))
+    max_age           = optional(number)
+  })
+  default = null
+}

@@ -252,6 +252,57 @@ run "doxchange_extensions_cover_secrets_edge_trust_and_extra_s3_access" {
   }
 }
 
+run "cors_config_is_applied_natively_to_the_function_url" {
+  command = plan
+
+  variables {
+    app_name               = "sampleapp"
+    deployment_environment = "dev"
+    function_name          = "auth-proxy"
+    source_bucket_arn      = "arn:aws:s3:::deployment-sampleapp"
+    source_bucket_id       = "deployment-sampleapp"
+    kms_key_policy_json    = jsonencode({ Version = "2012-10-17", Statement = [] })
+    create_url             = true
+    cors = {
+      allow_origins = ["https://dashboard.example.com"]
+      allow_methods = ["POST"]
+    }
+  }
+
+  assert {
+    condition     = length(aws_lambda_function_url.this[0].cors) == 1
+    error_message = "Expected exactly one cors block on the Function URL when the cors variable is set."
+  }
+
+  assert {
+    condition = (
+      length(aws_lambda_function_url.this[0].cors) == 1 &&
+      toset(tolist(aws_lambda_function_url.this[0].cors)[0].allow_origins) == toset(["https://dashboard.example.com"]) &&
+      toset(tolist(aws_lambda_function_url.this[0].cors)[0].allow_methods) == toset(["POST"])
+    )
+    error_message = "CORS configuration was not applied to the Function URL."
+  }
+}
+
+run "cors_defaults_to_unset_and_does_not_open_a_relay" {
+  command = plan
+
+  variables {
+    app_name               = "sampleapp"
+    deployment_environment = "dev"
+    function_name          = "auth-proxy"
+    source_bucket_arn      = "arn:aws:s3:::deployment-sampleapp"
+    source_bucket_id       = "deployment-sampleapp"
+    kms_key_policy_json    = jsonencode({ Version = "2012-10-17", Statement = [] })
+    create_url             = true
+  }
+
+  assert {
+    condition     = length(aws_lambda_function_url.this[0].cors) == 0
+    error_message = "CORS should be unset (AWS default: no CORS headers) when the cors variable is omitted, not silently permissive."
+  }
+}
+
 run "missing_archive_uses_echo_fallback_and_skips_s3_dependent_resources" {
   command = plan
 

@@ -32,6 +32,7 @@ The shared contract keeps the cleaner `coppice` shape while preserving the `doxc
 | `s3_required_access` | Optional extra S3 permissions keyed by a stable identifier. | `map(object({ action = string, resources = list(string) }))` |
 | `additional_role_policy_arns` | Optional existing IAM policy ARNs to attach to the Lambda execution role. | `list(string)` |
 | `assume_role_services` | AWS services allowed to assume the execution role. | `list(string)` |
+| `cors` | Optional CORS configuration for the Function URL (only applies when `create_url` is true). AWS answers `OPTIONS` preflight natively at the Function URL layer when this is set, without invoking the function. | `object({ allow_credentials, allow_headers, allow_methods, allow_origins, expose_headers, max_age })` |
 
 ## Outputs
 
@@ -68,6 +69,33 @@ module "lambda" {
 
   environment = {
     APP_ENV = "dev"
+  }
+}
+```
+
+### Function URL with CORS for a browser-facing endpoint
+
+For a public (`url_authorization_type = "NONE"`) Function URL a browser calls
+directly, set `cors` rather than hand-coding `OPTIONS`/CORS headers in the
+handler - AWS answers preflight requests at the infrastructure layer without
+invoking the function, and stamps the configured headers onto every response:
+
+```hcl
+module "auth_proxy" {
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/lambda?ref=v0.18"
+
+  app_name               = "node-dashboard"
+  deployment_environment = "prod"
+  function_name          = "auth-proxy"
+
+  source_bucket_arn = "arn:aws:s3:::deployment-node-dashboard"
+  source_bucket_id  = "deployment-node-dashboard"
+
+  create_url              = true
+  url_authorization_type  = "NONE"
+  cors = {
+    allow_origins = ["https://dashboard.example.com"]
+    allow_methods = ["POST"]
   }
 }
 ```
