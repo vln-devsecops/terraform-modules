@@ -20,6 +20,7 @@ provider "aws" {
 }
 
 module "lambda" {
+  # checkov:skip=CKV_AWS_258:This example deliberately demonstrates a public (NONE-auth) Function URL for a browser-facing endpoint (e.g. an OAuth device-flow proxy an anonymous browser must reach) - not a default any other caller of this module inherits; they set url_authorization_type = "AWS_IAM" for signed access.
   source = "../../../modules/aws/lambda"
 
   app_name               = var.app_name
