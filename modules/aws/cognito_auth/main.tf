@@ -425,12 +425,18 @@ module "user_role_assignments" {
   function                = "auth-role-assignments"
   short_deployment_region = local.short_region
 
+  # A user may hold several roles per tenant, so each (user, tenant, role) grant
+  # is its own row. The range key is the composite "<tenantId>#<roleId>"
+  # (attribute `tenantRole`); tenantId is retained as its own attribute for the
+  # tenantId-index GSI. The Lambda writes/reads tenantRole via the
+  # tenantRoleKey() helper in shared/roleAssignments.
   attributes = [
     { name = "userId", type = "S" },
+    { name = "tenantRole", type = "S" },
     { name = "tenantId", type = "S" },
   ]
   hash_key  = "userId"
-  range_key = "tenantId"
+  range_key = "tenantRole"
 
   global_secondary_indices = [
     {
@@ -821,13 +827,13 @@ locals {
       authorizer_key       = "cognito_auth"
     }
     assign_role = {
-      route_key            = "PUT /users/{userId}/role"
+      route_key            = "PUT /users/{userId}/roles/{roleId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
       authorizer_key       = "cognito_auth"
     }
     revoke_role = {
-      route_key            = "DELETE /users/{userId}/role"
+      route_key            = "DELETE /users/{userId}/roles/{roleId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
       authorizer_key       = "cognito_auth"
