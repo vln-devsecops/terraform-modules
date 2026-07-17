@@ -44,7 +44,7 @@ jobs:
   tflint:
     runs-on: ubuntu-latest
     env:
-      TFLINT_VERSION: "0.62.0"
+      TFLINT_VERSION: "0.63.1"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -59,7 +59,20 @@ jobs:
           unzip -q /tmp/tflint.zip -d "${HOME}/.local/bin"
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
-          "${HOME}/.local/bin/tflint" --init
+          # `tflint --init` currently crashes (nil pointer dereference in
+          # sigstore-go's TlogEntries during keyless plugin-signature
+          # verification - a known upstream tflint bug affecting the
+          # sigstore verification path independent of the tflint or
+          # ruleset-aws version; reproduced locally against tflint v0.62.0
+          # and v0.63.1 with a clean $HOME). Work around it by fetching and
+          # placing the ruleset binary ourselves instead of letting `--init`
+          # verify-then-install it: tflint's actual lint/load path does not
+          # re-verify an already-present plugin, only `--init` does.
+          ruleset_aws_version="$(grep -A3 'plugin "aws"' .tflint.hcl | grep -oP 'version\s*=\s*"\K[^"]+')"
+          mkdir -p "${HOME}/.tflint.d/plugins"
+          curl -fsSL -o /tmp/tflint-ruleset-aws.zip "https://github.com/terraform-linters/tflint-ruleset-aws/releases/download/v${ruleset_aws_version}/tflint-ruleset-aws_linux_amd64.zip"
+          unzip -q -o /tmp/tflint-ruleset-aws.zip -d "${HOME}/.tflint.d/plugins"
+          chmod +x "${HOME}/.tflint.d/plugins/tflint-ruleset-aws"
 
       - name: Run TFLint
         shell: bash
