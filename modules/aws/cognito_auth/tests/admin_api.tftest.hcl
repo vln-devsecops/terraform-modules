@@ -135,7 +135,7 @@ run "admin_api_routes_cover_the_full_users_and_roles_surface" {
     condition = alltrue([
       for route_key in [
         "GET /users", "GET /users/{userId}", "PATCH /users/{userId}/enabled",
-        "GET /roles", "PUT /users/{userId}/role", "DELETE /users/{userId}/role",
+        "GET /roles", "PUT /users/{userId}/roles/{roleId}", "DELETE /users/{userId}/roles/{roleId}",
       ] :
       contains([for route in local.admin_api_routes : route.route_key], route_key)
     ])
