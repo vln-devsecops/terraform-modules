@@ -186,7 +186,15 @@ resource "aws_cognito_user_pool_client" "auth_site" {
   # Cognito client config change, not a module API change.
   generate_secret                      = false
   allowed_oauth_flows_user_pool_client = false
-  explicit_auth_flows                  = ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
+  # ALLOW_ADMIN_USER_PASSWORD_AUTH is what the vendor-neutral auth Lambda uses:
+  # it verifies the password server-side via AdminInitiateAuth (the browser
+  # never touches Cognito). ALLOW_USER_PASSWORD_AUTH is retained for the legacy
+  # /api/v1/idp proxy path until the SPA migration removes it.
+  explicit_auth_flows = [
+    "ALLOW_ADMIN_USER_PASSWORD_AUTH",
+    "ALLOW_USER_PASSWORD_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH",
+  ]
 }
 
 resource "aws_cognito_user_group" "this" {
@@ -845,6 +853,128 @@ module "admin_api" {
   tags = local.common_tags
 }
 
+# --- Vendor-neutral auth API (public; the branded login's first-party backend)
+#
+# Step 1 of the vendor-neutral migration (see node-vlinder-auth/doc/
+# vendor-neutral-auth.md): the auth Lambda serves the identifier-first login
+# flow under /api/v1/auth, landed ALONGSIDE the legacy /api/v1/idp proxy. The
+# SPA does not consume it yet. Federation, the BFF /authorize+/token handoff,
+# and the rest of the endpoint set land in later increments.
+
+# Signing key for the identify/AS session JWS (HS256). Held only in the auth
+# Lambda's environment, which is encrypted with this module's CMK. Rotating it
+# invalidates in-flight sessions, which is acceptable (short-lived).
+resource "random_password" "auth_session_signing_key" {
+  count = var.create_admin_panel ? 1 : 0
+
+  length  = 64
+  special = false
+}
+
+resource "aws_iam_role" "auth_api" {
+  count = var.create_admin_panel ? 1 : 0
+
+  name               = "${var.app_name}-${var.deployment_environment}-auth-api"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "auth_api_logging" {
+  count = var.create_admin_panel ? 1 : 0
+
+  role       = aws_iam_role.auth_api[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_policy" "auth_api" {
+  count = var.create_admin_panel ? 1 : 0
+
+  name = "${var.app_name}-${var.deployment_environment}-auth-api"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["cognito-idp:AdminInitiateAuth"]
+        Resource = [aws_cognito_user_pool.this.arn]
+      },
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "auth_api_permissions" {
+  count = var.create_admin_panel ? 1 : 0
+
+  role       = aws_iam_role.auth_api[0].name
+  policy_arn = aws_iam_policy.auth_api[0].arn
+}
+
+resource "aws_lambda_function" "auth_api" {
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
+  # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
+  count = var.create_admin_panel ? 1 : 0
+
+  function_name    = "${var.app_name}-${var.deployment_environment}-auth-api"
+  role             = aws_iam_role.auth_api[0].arn
+  handler          = "auth-api/handler.handler"
+  runtime          = "nodejs22.x"
+  timeout          = 10
+  publish          = true
+  kms_key_arn      = aws_kms_key.this.arn
+  filename         = data.archive_file.lambda_package.output_path
+  source_code_hash = data.archive_file.lambda_package.output_base64sha256
+
+  tracing_config {
+    mode = "Active"
+  }
+
+  environment {
+    variables = {
+      USER_POOL_ID        = aws_cognito_user_pool.this.id
+      AUTH_CLIENT_ID      = one(aws_cognito_user_pool_client.auth_site[*].id)
+      SESSION_SIGNING_KEY = one(random_password.auth_session_signing_key[*].result)
+    }
+  }
+
+  tags = local.common_tags
+
+  depends_on = [aws_iam_role_policy_attachment.auth_api_logging]
+}
+
+locals {
+  # Public routes (no JWT authorizer -- this is how a token is obtained). The
+  # CloudFront /api/v1/auth* behavior strips the /api/v1 prefix, so the API
+  # Gateway sees /auth/*.
+  auth_api_routes = var.create_admin_panel ? {
+    identify = {
+      route_key            = "POST /auth/identify"
+      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+    }
+    password = {
+      route_key            = "POST /auth/password"
+      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+    }
+  } : {}
+}
+
+module "auth_api" {
+  count  = var.create_admin_panel ? 1 : 0
+  source = "../http_api"
+
+  name = "${var.app_name}-${var.deployment_environment}-auth-api"
+
+  routes = local.auth_api_routes
+
+  tags = local.common_tags
+}
+
 # --- Auth site hosting -------------------------------------------------------
 #
 # A single CloudFront distribution at auth.<zone> replaces both the Cognito
@@ -965,6 +1095,16 @@ resource "aws_cloudfront_function" "admin_api_rewrite" {
   code    = file("${path.module}/templates/admin_api_rewrite.js")
 }
 
+resource "aws_cloudfront_function" "auth_api_rewrite" {
+  count = var.create_admin_panel ? 1 : 0
+
+  name    = "${replace(local.auth_site_domain, ".", "-")}-auth-api-vr"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  comment = "Strips /api/v1 prefix before forwarding to auth HTTP API for ${local.auth_site_domain}"
+  code    = file("${path.module}/templates/auth_api_rewrite.js")
+}
+
 data "aws_iam_policy_document" "auth_site_cloudfront_read" {
   version = "2012-10-17"
 
@@ -1044,6 +1184,22 @@ resource "aws_cloudfront_distribution" "auth_site" {
     }
   }
 
+  # Auth API origin: the login SPA calls this same-origin via /api/v1/auth
+  dynamic "origin" {
+    for_each = var.create_admin_panel ? [one(module.auth_api[*].invoke_url)] : []
+    content {
+      domain_name = regex("https://([^/]+)", origin.value)[0]
+      origin_id   = "AuthApi"
+
+      custom_origin_config {
+        http_port              = 80
+        https_port             = 443
+        origin_protocol_policy = "https-only"
+        origin_ssl_protocols   = ["TLSv1.2"]
+      }
+    }
+  }
+
   # Default behavior: SPA static assets from S3
   default_cache_behavior {
     target_origin_id       = "AuthSiteS3"
@@ -1097,6 +1253,40 @@ resource "aws_cloudfront_distribution" "auth_site" {
     function_association {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.idp_proxy_rewrite.arn
+    }
+  }
+
+  # /api/v1/auth* behavior: proxy to the public auth HTTP API (login flow).
+  # Ordered BEFORE /api/v1/* so auth requests never fall through to the admin
+  # API. Cookies are forwarded both ways -- the flow reads/sets the HttpOnly
+  # identify/AS session cookies.
+  dynamic "ordered_cache_behavior" {
+    for_each = var.create_admin_panel ? [one(aws_cloudfront_function.auth_api_rewrite[*].arn)] : []
+    content {
+      path_pattern           = "/api/v1/auth*"
+      target_origin_id       = "AuthApi"
+      viewer_protocol_policy = "https-only"
+      compress               = false
+
+      allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+      cached_methods  = ["GET", "HEAD"]
+
+      forwarded_values {
+        query_string = true
+        headers      = ["Authorization", "Content-Type"]
+        cookies {
+          forward = "all"
+        }
+      }
+
+      min_ttl     = 0
+      default_ttl = 0
+      max_ttl     = 0
+
+      function_association {
+        event_type   = "viewer-request"
+        function_arn = ordered_cache_behavior.value
+      }
     }
   }
 
