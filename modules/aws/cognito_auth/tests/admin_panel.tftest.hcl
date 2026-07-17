@@ -188,3 +188,52 @@ run "idp_proxy_behavior_is_always_present" {
     error_message = "The /api/v1/idp* CloudFront behavior (Cognito IDP proxy) must always be present."
   }
 }
+
+run "auth_api_behavior_is_present_when_admin_panel_enabled" {
+  command = plan
+
+  assert {
+    condition = anytrue([
+      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      rule.path_pattern == "/api/v1/auth*"
+    ])
+    error_message = "The /api/v1/auth* CloudFront behavior (vendor-neutral auth API) should be present."
+  }
+
+  # Ordering is load-bearing: /api/v1/auth* must be evaluated before /api/v1/*,
+  # or auth requests fall through to the admin API.
+  assert {
+    condition = (
+      [for i, rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior : i if rule.path_pattern == "/api/v1/auth*"][0]
+      <
+      [for i, rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior : i if rule.path_pattern == "/api/v1/*"][0]
+    )
+    error_message = "The /api/v1/auth* behavior must be ordered before /api/v1/*."
+  }
+
+  assert {
+    condition     = length(aws_lambda_function.auth_api) == 1
+    error_message = "The auth API Lambda should be provisioned when create_admin_panel is true."
+  }
+
+  assert {
+    condition     = one(aws_lambda_function.auth_api[*].handler) == "auth-api/handler.handler"
+    error_message = "The auth API Lambda should use the auth-api/handler.handler entry point."
+  }
+}
+
+run "auth_api_behavior_is_omitted_when_admin_panel_disabled" {
+  command = plan
+
+  variables {
+    create_admin_panel = false
+  }
+
+  assert {
+    condition = !anytrue([
+      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      rule.path_pattern == "/api/v1/auth*"
+    ])
+    error_message = "The /api/v1/auth* behavior should not be present when create_admin_panel is false."
+  }
+}
