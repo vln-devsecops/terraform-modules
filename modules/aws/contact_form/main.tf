@@ -230,6 +230,7 @@ resource "aws_lambda_function" "submit" {
 }
 
 resource "aws_lambda_function_url" "submit" {
+  # checkov:skip=CKV_AWS_258:Public, unauthenticated submission endpoint by design -- this is the contact form's public entry point; reCAPTCHA v3 gates it at the application layer instead
   function_name      = aws_lambda_function.submit.function_name
   authorization_type = "NONE"
 
