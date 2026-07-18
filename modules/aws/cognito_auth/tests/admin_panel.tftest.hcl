@@ -177,15 +177,24 @@ run "custom_domain_prefix_controls_auth_site_hostname" {
   }
 }
 
-run "idp_proxy_behavior_is_always_present" {
+run "idp_proxy_behavior_is_retired" {
   command = plan
 
+  # The vendor-neutral migration removed the direct-to-Cognito proxy: the SPA
+  # speaks only /api/v1/auth now, so no /api/v1/idp* behavior should remain.
   assert {
-    condition = anytrue([
+    condition = alltrue([
       for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
-      startswith(rule.path_pattern, "/api/v1/idp")
+      !startswith(rule.path_pattern, "/api/v1/idp")
     ])
-    error_message = "The /api/v1/idp* CloudFront behavior (Cognito IDP proxy) must always be present."
+    error_message = "The /api/v1/idp* CloudFront behavior (retired Cognito IDP proxy) should no longer exist."
+  }
+
+  assert {
+    condition = alltrue([
+      for o in aws_cloudfront_distribution.auth_site.origin : o.origin_id != "CognitoIdp"
+    ])
+    error_message = "The Cognito-IDP custom origin should be removed with the proxy."
   }
 }
 

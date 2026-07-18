@@ -174,25 +174,15 @@ resource "aws_cognito_user_pool_client" "auth_site" {
   name         = "${var.app_name}-auth-site-${var.deployment_environment}"
   user_pool_id = aws_cognito_user_pool.this.id
 
-  # Direct IDP API auth (USER_PASSWORD_AUTH): the login SPA calls Cognito's
-  # regional IDP endpoint directly via /api/v1/idp* on the CloudFront distribution,
-  # bypassing the hosted-UI redirect model entirely. OAuth/PKCE flows are not
-  # used by the SPA itself, so allowed_oauth_flows_user_pool_client is disabled
-  # and no callback/logout URLs are required.
-  #
-  # Auth flow choice: USER_PASSWORD_AUTH is used for first-pass simplicity
-  # over USER_SRP_AUTH (which would require client-side SRP crypto via
-  # amazon-cognito-identity-js). Flag this if SRP is preferred -- it's a
-  # Cognito client config change, not a module API change.
+  # The vendor-neutral auth Lambda verifies passwords server-side via
+  # AdminInitiateAuth (ADMIN_USER_PASSWORD_AUTH); the browser never touches
+  # Cognito. OAuth/PKCE and hosted-UI flows are unused by the SPA, so
+  # allowed_oauth_flows_user_pool_client is disabled and no callback/logout URLs
+  # are required.
   generate_secret                      = false
   allowed_oauth_flows_user_pool_client = false
-  # ALLOW_ADMIN_USER_PASSWORD_AUTH is what the vendor-neutral auth Lambda uses:
-  # it verifies the password server-side via AdminInitiateAuth (the browser
-  # never touches Cognito). ALLOW_USER_PASSWORD_AUTH is retained for the legacy
-  # /api/v1/idp proxy path until the SPA migration removes it.
   explicit_auth_flows = [
     "ALLOW_ADMIN_USER_PASSWORD_AUTH",
-    "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
   ]
 }
@@ -863,7 +853,7 @@ module "admin_api" {
 #
 # Step 1 of the vendor-neutral migration (see node-vlinder-auth/doc/
 # vendor-neutral-auth.md): the auth Lambda serves the identifier-first login
-# flow under /api/v1/auth, landed ALONGSIDE the legacy /api/v1/idp proxy. The
+# flow under /api/v1/auth (the SPA's only auth backend). The
 # SPA does not consume it yet. Federation, the BFF /authorize+/token handoff,
 # and the rest of the endpoint set land in later increments.
 
@@ -1029,16 +1019,13 @@ module "auth_api" {
 #                        on the caller's JWT permissions claim), not a separate
 #                        hostname -- no separate CloudFront distribution needed.
 #
-#   /api/v1/idp* behavior → Custom origin: Cognito's regional IDP API
-#                        (cognito-idp.<region>.amazonaws.com). TTL 0, never
-#                        cached. Forwards Content-Type via the standard
-#                        allowlist; X-Amz-Target is re-set explicitly by the
-#                        CloudFront Function instead, since CloudFront
-#                        rejects any X-Amz-* header name in that allowlist
-#                        (see idp_proxy_rewrite.js). Lets the SPA call
-#                        InitiateAuth, SignUp, etc. same-origin through
-#                        CloudFront without CORS. The same function also
-#                        strips the /api/v1/idp prefix before forwarding.
+#   /api/v1/auth* behavior → Custom origin: the public auth HTTP API (the
+#                        vendor-neutral login + self-service backend; the auth
+#                        Lambda owns all Cognito interaction). TTL 0, never
+#                        cached. Cookies forwarded (the in-flight identify
+#                        session). Ordered before /api/v1/* so auth requests
+#                        never fall through to the admin API. A CloudFront
+#                        Function strips /api/v1 before forwarding.
 #
 #   /api/v1/* behavior → Custom origin: the admin HTTP API (JWT-protected),
 #                        TTL 0, never cached. Forwards Authorization +
@@ -1119,14 +1106,6 @@ resource "aws_cloudfront_function" "spa_viewer_request" {
   code    = file("${path.module}/templates/spa_viewer_request.js")
 }
 
-resource "aws_cloudfront_function" "idp_proxy_rewrite" {
-  name    = "${replace(local.auth_site_domain, ".", "-")}-idp-vr"
-  runtime = "cloudfront-js-2.0"
-  publish = true
-  comment = "Strips /api/v1/idp prefix before forwarding to Cognito IDP for ${local.auth_site_domain}"
-  code    = file("${path.module}/templates/idp_proxy_rewrite.js")
-}
-
 resource "aws_cloudfront_function" "admin_api_rewrite" {
   count = var.create_admin_panel ? 1 : 0
 
@@ -1197,19 +1176,6 @@ resource "aws_cloudfront_distribution" "auth_site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.auth_site.id
   }
 
-  # Cognito regional IDP API origin: the SPA calls this same-origin via /api/v1/idp
-  origin {
-    domain_name = "cognito-idp.${data.aws_region.current.region}.amazonaws.com"
-    origin_id   = "CognitoIdp"
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
-  }
-
   # Admin API origin: the admin SPA calls this same-origin via /api/v1
   dynamic "origin" {
     for_each = var.create_admin_panel ? [one(module.admin_api[*].invoke_url)] : []
@@ -1261,40 +1227,6 @@ resource "aws_cloudfront_distribution" "auth_site" {
     function_association {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.spa_viewer_request.arn
-    }
-  }
-
-  # /api/v1/idp* behavior: proxy to Cognito IDP API (no caching; unauthenticated calls)
-  ordered_cache_behavior {
-    path_pattern           = "/api/v1/idp*"
-    target_origin_id       = "CognitoIdp"
-    viewer_protocol_policy = "https-only"
-    compress               = false
-
-    allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods  = ["GET", "HEAD"]
-
-    # X-Amz-Target is deliberately not in this allowlist -- CloudFront
-    # rejects any header name starting with "X-Amz-" here at distribution-
-    # config time (AWS's documented origin custom-header denylist), no
-    # exceptions. idp_proxy_rewrite.js re-sets it explicitly on the request
-    # object instead, a separate mechanism CloudFront Functions aren't
-    # subject to the same restriction on.
-    forwarded_values {
-      query_string = true
-      headers      = ["Authorization", "Content-Type"]
-      cookies {
-        forward = "none"
-      }
-    }
-
-    min_ttl     = 0
-    default_ttl = 0
-    max_ttl     = 0
-
-    function_association {
-      event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.idp_proxy_rewrite.arn
     }
   }
 
