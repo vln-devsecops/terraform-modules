@@ -22,7 +22,7 @@ provider "aws" {
 }
 
 module "auth" {
-  source = "../../../modules/aws/cognito_auth"
+  source = "../../../modules/aws/vlinder_auth"
 
   app_name               = var.app_name
   deployment_environment = var.deployment_environment

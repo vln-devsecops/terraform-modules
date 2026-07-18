@@ -12,14 +12,17 @@ cleanup() {
 
 trap 'cleanup "$?"' EXIT
 
-base_domain="${COGNITO_AUTH_TEST_BASE_DOMAIN:-${MAIL_TEST_BASE_DOMAIN:-}}"
-route53_zone_id="${COGNITO_AUTH_TEST_ROUTE53_ZONE_ID:-${MAIL_TEST_ROUTE53_ZONE_ID:-}}"
+# Prefer the VLINDER_AUTH_TEST_* variables; fall back to the old
+# COGNITO_AUTH_TEST_* names (and then the mail suite's) so the suite keeps
+# working until the GitHub repo/environment variables are renamed.
+base_domain="${VLINDER_AUTH_TEST_BASE_DOMAIN:-${COGNITO_AUTH_TEST_BASE_DOMAIN:-${MAIL_TEST_BASE_DOMAIN:-}}}"
+route53_zone_id="${VLINDER_AUTH_TEST_ROUTE53_ZONE_ID:-${COGNITO_AUTH_TEST_ROUTE53_ZONE_ID:-${MAIL_TEST_ROUTE53_ZONE_ID:-}}}"
 
-require_env AWS_ACCESS_KEY_ID "AWS_ACCESS_KEY_ID must be set to run the cognito_auth live suite."
-require_env AWS_SECRET_ACCESS_KEY "AWS_SECRET_ACCESS_KEY must be set to run the cognito_auth live suite."
+require_env AWS_ACCESS_KEY_ID "AWS_ACCESS_KEY_ID must be set to run the vlinder_auth live suite."
+require_env AWS_SECRET_ACCESS_KEY "AWS_SECRET_ACCESS_KEY must be set to run the vlinder_auth live suite."
 
 if [ -z "${base_domain}" ] || [ -z "${route53_zone_id}" ]; then
-  printf '%s\n' "Set COGNITO_AUTH_TEST_BASE_DOMAIN and COGNITO_AUTH_TEST_ROUTE53_ZONE_ID (or reuse MAIL_TEST_BASE_DOMAIN and MAIL_TEST_ROUTE53_ZONE_ID) to run the cognito_auth live suite." >&2
+  printf '%s\n' "Set VLINDER_AUTH_TEST_BASE_DOMAIN and VLINDER_AUTH_TEST_ROUTE53_ZONE_ID (or reuse MAIL_TEST_BASE_DOMAIN and MAIL_TEST_ROUTE53_ZONE_ID) to run the vlinder_auth live suite." >&2
   exit 2
 fi
 

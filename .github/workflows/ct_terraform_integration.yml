@@ -146,8 +146,8 @@ jobs:
       # the BDD e2e suite live there, not here) -- public as of 2026-07-13,
       # so no cross-repo PAT is needed to check it out or to read the
       # auth-lambda package it publishes.
-      - name: Checkout node-vlinder-auth (auth-site SPA + e2e suite, cognito_auth suite only)
-        if: contains(matrix.suite, 'cognito_auth')
+      - name: Checkout node-vlinder-auth (auth-site SPA + e2e suite, vlinder_auth suite only)
+        if: contains(matrix.suite, 'vlinder_auth')
         uses: actions/checkout@v5
         with:
           repository: vln-devsecops/node-vlinder-auth
@@ -186,6 +186,10 @@ jobs:
           AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
           MAIL_TEST_BASE_DOMAIN: ${{ vars.MAIL_TEST_BASE_DOMAIN }}
           MAIL_TEST_ROUTE53_ZONE_ID: ${{ vars.MAIL_TEST_ROUTE53_ZONE_ID }}
+          # New names; the old COGNITO_AUTH_TEST_* are passed too so run.sh's
+          # fallback keeps working until the GitHub repo/env variables are renamed.
+          VLINDER_AUTH_TEST_BASE_DOMAIN: ${{ vars.VLINDER_AUTH_TEST_BASE_DOMAIN }}
+          VLINDER_AUTH_TEST_ROUTE53_ZONE_ID: ${{ vars.VLINDER_AUTH_TEST_ROUTE53_ZONE_ID }}
           COGNITO_AUTH_TEST_BASE_DOMAIN: ${{ vars.COGNITO_AUTH_TEST_BASE_DOMAIN }}
           COGNITO_AUTH_TEST_ROUTE53_ZONE_ID: ${{ vars.COGNITO_AUTH_TEST_ROUTE53_ZONE_ID }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -279,5 +283,5 @@ jobs:
             echo
             echo "The mail suite also needs `MAIL_TEST_BASE_DOMAIN` and `MAIL_TEST_ROUTE53_ZONE_ID` as repository or environment variables."
             echo
-            echo "The cognito_auth suite also needs `COGNITO_AUTH_TEST_BASE_DOMAIN` and `COGNITO_AUTH_TEST_ROUTE53_ZONE_ID` as repository or environment variables."
+            echo "The vlinder_auth suite also needs `VLINDER_AUTH_TEST_BASE_DOMAIN` and `VLINDER_AUTH_TEST_ROUTE53_ZONE_ID` as repository or environment variables."
           } >> "${GITHUB_STEP_SUMMARY}"
