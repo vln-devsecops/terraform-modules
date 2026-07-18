@@ -1,0 +1,9 @@
+{
+  "name": "@vln-devsecops/contact-form-lambda-build",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build manifest for contact_form module's Lambda functions. Terraform installs this at apply time via null_resource.lambda_package; Dependabot bumps the version here when a new release is published to GitHub Packages.",
+  "dependencies": {
+    "@vln-devsecops/contact-form-lambda": "^1.0.0"
+  }
+}
