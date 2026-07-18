@@ -296,7 +296,7 @@ data "aws_iam_policy_document" "kms" {
 }
 
 resource "aws_kms_key" "this" {
-  description             = "CMK for ${var.app_name}-${var.deployment_environment} cognito_auth encryption"
+  description             = "CMK for ${var.app_name}-${var.deployment_environment} vlinder_auth encryption"
   deletion_window_in_days = 7
   enable_key_rotation     = true
   policy                  = data.aws_iam_policy_document.kms.json
@@ -304,7 +304,7 @@ resource "aws_kms_key" "this" {
 }
 
 resource "aws_kms_alias" "this" {
-  name          = "alias/${var.app_name}-${var.deployment_environment}-cognito-auth"
+  name          = "alias/${var.app_name}-${var.deployment_environment}-vlinder-auth"
   target_key_id = aws_kms_key.this.key_id
 }
 
@@ -448,7 +448,7 @@ module "user_role_assignments" {
 # don't require a live npm install.
 #
 # To install locally before running terraform validate/test:
-#   npm install --prefix modules/aws/cognito_auth/lambda-build
+#   npm install --prefix modules/aws/vlinder_auth/lambda-build
 #
 # The build pipeline (esbuild) produces three self-contained CJS bundles at
 # dist/post-confirmation/handler.js, dist/pre-token-generation/handler.js,
@@ -796,37 +796,37 @@ locals {
       route_key            = "GET /users"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "cognito_auth"
+      authorizer_key       = "vlinder_auth"
     }
     get_user = {
       route_key            = "GET /users/{userId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "cognito_auth"
+      authorizer_key       = "vlinder_auth"
     }
     set_user_enabled = {
       route_key            = "PATCH /users/{userId}/enabled"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "cognito_auth"
+      authorizer_key       = "vlinder_auth"
     }
     list_roles = {
       route_key            = "GET /roles"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "cognito_auth"
+      authorizer_key       = "vlinder_auth"
     }
     assign_role = {
       route_key            = "PUT /users/{userId}/roles/{roleId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "cognito_auth"
+      authorizer_key       = "vlinder_auth"
     }
     revoke_role = {
       route_key            = "DELETE /users/{userId}/roles/{roleId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "cognito_auth"
+      authorizer_key       = "vlinder_auth"
     }
   } : {}
 }
@@ -838,7 +838,7 @@ module "admin_api" {
   name = "${var.app_name}-${var.deployment_environment}-admin-api"
 
   jwt_authorizers = {
-    cognito_auth = {
+    vlinder_auth = {
       issuer_url = local.admin_api_issuer_url
       audience   = aws_cognito_user_pool_client.auth_site[*].id
     }

@@ -247,7 +247,7 @@ updates:
       - npm
 
   - package-ecosystem: npm
-    directory: /modules/aws/cognito_auth/lambda-build
+    directory: /modules/aws/vlinder_auth/lambda-build
     target-branch: main
     schedule:
       interval: weekly

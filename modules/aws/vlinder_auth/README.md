@@ -1,4 +1,4 @@
-# aws/cognito_auth
+# aws/vlinder_auth
 
 A self-provisioning Cognito auth component: a consumer supplies an app id and
 the unavoidable AWS plumbing (an existing Route 53 zone and a us-east-1 ACM
@@ -8,7 +8,7 @@ Lambda ARNs, no DynamoDB tables, and no second API to wire by hand.
 
 ```hcl
 module "auth" {
-  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/cognito_auth?ref=v0.1"
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/vlinder_auth?ref=v0.1"
 
   app_name                = "myapp"
   deployment_environment  = "prod"
@@ -83,7 +83,7 @@ lookup) for real multi-tenant behavior.
 
 ```hcl
 module "auth" {
-  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/cognito_auth?ref=v0.1"
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/vlinder_auth?ref=v0.1"
 
   app_name                = "myapp"
   deployment_environment  = "prod"
@@ -185,6 +185,6 @@ know these values yet).
 
 - `tests/*.tftest.hcl` — mock-provider contract tests, one file per slice
   (identity, RBAC/tenancy, Lambdas, admin API, admin panel hosting).
-- `examples/aws/cognito_auth/` — a runnable example.
-- `tests/aws/cognito_auth/run.sh` — a provider-backed suite exercising a real
+- `examples/aws/vlinder_auth/` — a runnable example.
+- `tests/aws/vlinder_auth/run.sh` — a provider-backed suite exercising a real
   deployment end to end.
