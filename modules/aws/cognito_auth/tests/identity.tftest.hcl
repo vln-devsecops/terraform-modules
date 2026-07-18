@@ -164,12 +164,17 @@ run "consumer_clients_map_produces_matching_clients_plus_the_auth_site_client" {
   }
 }
 
-run "auth_site_client_uses_direct_idp_api_auth_flow" {
+run "auth_site_client_uses_server_side_admin_auth_flow" {
   command = plan
 
   assert {
-    condition     = contains(one(aws_cognito_user_pool_client.auth_site[*].explicit_auth_flows), "ALLOW_USER_PASSWORD_AUTH")
-    error_message = "The auth site client must enable ALLOW_USER_PASSWORD_AUTH for direct IDP API calls."
+    condition     = contains(one(aws_cognito_user_pool_client.auth_site[*].explicit_auth_flows), "ALLOW_ADMIN_USER_PASSWORD_AUTH")
+    error_message = "The auth site client must enable ALLOW_ADMIN_USER_PASSWORD_AUTH for the auth Lambda's server-side sign-in."
+  }
+
+  assert {
+    condition     = !contains(one(aws_cognito_user_pool_client.auth_site[*].explicit_auth_flows), "ALLOW_USER_PASSWORD_AUTH")
+    error_message = "The retired direct-IDP browser flow (ALLOW_USER_PASSWORD_AUTH) should no longer be enabled."
   }
 
   assert {
