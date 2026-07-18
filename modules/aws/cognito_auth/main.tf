@@ -901,8 +901,19 @@ resource "aws_iam_policy" "auth_api" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["cognito-idp:AdminInitiateAuth"]
+        Effect = "Allow"
+        Action = [
+          # Login (server-side password verification).
+          "cognito-idp:AdminInitiateAuth",
+          # Self-service registration + recovery, wrapped server-side so the SPA
+          # speaks only /api/v1/auth. These are Cognito's user-facing operations;
+          # signed SDK calls from the Lambda are subject to IAM.
+          "cognito-idp:SignUp",
+          "cognito-idp:ConfirmSignUp",
+          "cognito-idp:ResendConfirmationCode",
+          "cognito-idp:ForgotPassword",
+          "cognito-idp:ConfirmForgotPassword",
+        ]
         Resource = [aws_cognito_user_pool.this.arn]
       },
     ]
@@ -964,6 +975,31 @@ locals {
     }
     password = {
       route_key            = "POST /auth/password"
+      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+    }
+    signup = {
+      route_key            = "POST /auth/signup"
+      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+    }
+    confirm = {
+      route_key            = "POST /auth/confirm"
+      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+    }
+    resend = {
+      route_key            = "POST /auth/resend"
+      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+    }
+    forgot = {
+      route_key            = "POST /auth/forgot"
+      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+    }
+    reset = {
+      route_key            = "POST /auth/reset"
       lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
     }
