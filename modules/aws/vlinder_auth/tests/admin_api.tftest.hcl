@@ -102,7 +102,7 @@ run "admin_api_is_provisioned_via_the_shared_http_api_module_with_a_jwt_authoriz
   # http_api is a separate module with its own test suite that verifies
   # jwt_authorizers.issuer_url actually lands in the authorizer resource;
   # module encapsulation means only outputs are visible from here, so this
-  # checks the value cognito_auth itself computes and hands across that
+  # checks the value vlinder_auth itself computes and hands across that
   # boundary, not http_api's internals.
   assert {
     condition     = strcontains(local.admin_api_issuer_url, "us-east-1_exampleId")

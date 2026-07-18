@@ -27,7 +27,7 @@ provider "aws" {
 }
 
 locals {
-  # cognito_auth derives the auth site hostname directly from the zone name
+  # vlinder_auth derives the auth site hostname directly from the zone name
   # plus a prefix (no built-in per-run uniqueness), so the suite bakes the
   # random suffix into the prefix to avoid colliding with concurrent runs.
   domain_prefix    = "auth-${var.name_suffix}"
@@ -63,8 +63,8 @@ resource "aws_acm_certificate_validation" "auth" {
   validation_record_fqdns = [for record in aws_route53_record.auth_validation : record.fqdn]
 }
 
-module "cognito_auth" {
-  source = "../../../modules/aws/cognito_auth"
+module "vlinder_auth" {
+  source = "../../../modules/aws/vlinder_auth"
 
   app_name               = "cogauth-${var.name_suffix}"
   deployment_environment = "test"
@@ -81,33 +81,33 @@ module "cognito_auth" {
 }
 
 output "user_pool_id" {
-  value = module.cognito_auth.user_pool_id
+  value = module.vlinder_auth.user_pool_id
 }
 
 output "auth_domain" {
-  value = module.cognito_auth.auth_domain
+  value = module.vlinder_auth.auth_domain
 }
 
 output "auth_url" {
-  value = module.cognito_auth.auth_url
+  value = module.vlinder_auth.auth_url
 }
 
 output "admin_panel_url" {
-  value = module.cognito_auth.admin_panel_url
+  value = module.vlinder_auth.admin_panel_url
 }
 
 output "admin_api_invoke_url" {
-  value = module.cognito_auth.admin_api_invoke_url
+  value = module.vlinder_auth.admin_api_invoke_url
 }
 
 output "auth_site_bucket_name" {
-  value = module.cognito_auth.auth_site_bucket_name
+  value = module.vlinder_auth.auth_site_bucket_name
 }
 
 output "auth_site_client_id" {
-  value = module.cognito_auth.auth_site_client_id
+  value = module.vlinder_auth.auth_site_client_id
 }
 
 output "role_assignments_table_name" {
-  value = module.cognito_auth.role_assignments_table_name
+  value = module.vlinder_auth.role_assignments_table_name
 }
