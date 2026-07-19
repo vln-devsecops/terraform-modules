@@ -121,8 +121,23 @@ resource "aws_secretsmanager_secret_version" "recaptcha" {
 # prefix: "<subdir>/handler.handler".
 
 resource "null_resource" "lambda_package" {
+  # always_run (not a package.json content hash): a trigger keyed only on
+  # package.json's content means Terraform skips re-running this
+  # provisioner whenever the trigger value matches what's already in
+  # state - correct for a persistent developer machine where
+  # lambda-build/node_modules survives between applies, but wrong for a
+  # genuinely ephemeral CI runner. A retried apply after a partial
+  # failure (or any apply on a fresh runner after a prior successful one)
+  # starts from a clean filesystem with no node_modules at all, yet state
+  # still says "already installed" - archive_file then fails trying to
+  # read a directory that was only ever real on the *previous* runner's
+  # disk. Re-running npm install on every apply is cheap (a few seconds,
+  # --ignore-scripts) and the downstream archive_file's content hash only
+  # changes if the installed package's actual content changes, so this
+  # doesn't cause spurious Lambda redeployments - just a cosmetic
+  # "will be replaced" line on this resource in every plan.
   triggers = {
-    package_json = filemd5("${path.module}/lambda-build/package.json")
+    always_run = timestamp()
   }
 
   provisioner "local-exec" {
