@@ -131,17 +131,27 @@ resource "null_resource" "lambda_package" {
   # starts from a clean filesystem with no node_modules at all, yet state
   # still says "already installed" - archive_file then fails trying to
   # read a directory that was only ever real on the *previous* runner's
-  # disk. Re-running npm install on every apply is cheap (a few seconds,
-  # --ignore-scripts) and the downstream archive_file's content hash only
-  # changes if the installed package's actual content changes, so this
-  # doesn't cause spurious Lambda redeployments - just a cosmetic
-  # "will be replaced" line on this resource in every plan.
+  # disk.
   triggers = {
     always_run = timestamp()
   }
 
+  # The command itself skips npm install when the target directory already
+  # exists, rather than relying on the trigger alone to control whether npm
+  # runs. This matters: two separate `npm install` runs of byte-identical
+  # package content do NOT produce a byte-identical archive_file output
+  # (verified directly - re-extracted files get fresh timestamps/ordering,
+  # changing the zip's hash even though every file's own content is
+  # unchanged). Always running the provisioner but only reinstalling when
+  # necessary means archive_file re-reads the same untouched files (and so
+  # produces the same hash) on every apply where nothing actually needs to
+  # change, and only pays the reinstall - and the one-time hash churn that
+  # comes with it - on a genuinely fresh filesystem (a new CI runner, or the
+  # very first apply). Real Lambda redeployment still happens correctly
+  # when the installed package's content genuinely changes, since that's a
+  # real reinstall either way.
   provisioner "local-exec" {
-    command = "npm install --prefix ${path.module}/lambda-build --ignore-scripts"
+    command = "test -d ${path.module}/lambda-build/node_modules/@vln-devsecops/contact-form-lambda/dist || npm install --prefix ${path.module}/lambda-build --ignore-scripts"
   }
 }
 
