@@ -49,7 +49,7 @@ variable "waf_web_acl_arn" {
 }
 
 variable "auth_site_force_destroy" {
-  description = "Whether to allow the auth site's S3 bucket to be force-destroyed even when non-empty. False by default -- a real deployment's SPA build artifacts (uploaded by a deploy pipeline, not tracked in Terraform state) shouldn't be silently deletable by terraform destroy. Live/ephemeral test suites should set this true."
+  description = "Whether to allow the auth site's S3 bucket to be force-destroyed even when non-empty. False by default -- the SPA assets are synced into the bucket by the module's deploy step rather than tracked as individual aws_s3_object resources, so terraform destroy can't empty the bucket on its own; a real deployment shouldn't have its content silently deleted. Live/ephemeral test suites should set this true."
   type        = bool
   default     = false
 }
