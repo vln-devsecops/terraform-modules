@@ -44,12 +44,12 @@ output "admin_api_invoke_url" {
 }
 
 output "auth_site_client_id" {
-  description = "Cognito app client ID for the bundled auth site (used for direct IDP API calls), when create_admin_panel is true; null otherwise."
+  description = "Cognito app client ID for the bundled auth site, when create_admin_panel is true; null otherwise. The module writes this into the SPA's runtime config.json itself; exposed for test/ops tooling."
   value       = one(aws_cognito_user_pool_client.auth_site[*].id)
 }
 
 output "auth_site_bucket_name" {
-  description = "S3 bucket name for the auth site SPA static assets. A deploy pipeline uploads the built SPA to this bucket."
+  description = "S3 bucket name for the auth site SPA static assets. The module deploys the SPA here itself; exposed for test/ops tooling that needs to inspect the bucket."
   value       = aws_s3_bucket.auth_site.id
 }
 

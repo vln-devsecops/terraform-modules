@@ -130,13 +130,21 @@ checks, not which client a caller authenticated through) and its own
 Tenant-scoped callers (`:own` privileges) see only their own tenant's users;
 global-scoped callers (`:*` privileges) see across all tenants.
 
-The panel's *built* static assets are **not** vendored into this module —
-`static_site`'s bucket/CloudFront naming is only known after apply, so
-uploading real content is a deploy-pipeline concern, same as any other
-`static_site` consumer. Use the `admin_api_invoke_url` and
-`admin_panel_client_id` outputs to inject runtime config (a `config.json`
-fetched at load time — Vite env vars are baked in at build time and can't
-know these values yet).
+The SPA's *built* static assets are delivered by Terraform, so a single
+`terraform apply` yields a working site — there is no separate deploy step.
+The prebuilt bundle is published to GitHub Packages as
+`@vln-devsecops/auth-site` (from `node-vlinder-auth`), pinned in
+`site-build/package.json`, and installed at apply time — the same delivery
+mechanism as the Lambda. Terraform writes the per-deployment `config.json`
+(the auth-site app-client id and the multi-tenant flag — a `config.json`
+fetched at load time, since Vite env vars are baked in at build time and can't
+know these values yet) into the installed bundle with a `local_file` resource,
+then `aws s3 sync`s it to the S3 origin and invalidates CloudFront. SPA version
+bumps flow through Dependabot PRs on `site-build/package.json`.
+
+Because the SPA is installed and synced at apply time, the apply host needs
+Node + npm (already required for the Lambda) and the AWS CLI, plus a GitHub
+token with `read:packages` for the `@vln-devsecops` scope.
 
 ## Inputs
 

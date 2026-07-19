@@ -95,40 +95,30 @@ resolve_node_vlinder_auth_dir() {
 node_vlinder_auth_dir="$(resolve_node_vlinder_auth_dir || true)"
 
 if [ -z "${node_vlinder_auth_dir}" ]; then
-  printf '%s\n' "node-vlinder-auth checkout not found (tried CI-nested and sibling-workspace layouts); skipping auth-site SPA deploy and e2e suite." >&2
+  printf '%s\n' "node-vlinder-auth checkout not found (tried CI-nested and sibling-workspace layouts); skipping e2e suite (the SPA itself is deployed by terraform apply)." >&2
 else
-  auth_site_bucket_name="$(terraform -chdir="${script_dir}" output -raw auth_site_bucket_name)"
-  auth_site_client_id="$(terraform -chdir="${script_dir}" output -raw auth_site_client_id)"
   role_assignments_table_name="$(terraform -chdir="${script_dir}" output -raw role_assignments_table_name)"
   auth_url="$(terraform -chdir="${script_dir}" output -raw auth_url)"
 
-  # Install once, up front, before deploy.sh's own `npm run build` --
-  # deploy.sh assumes node_modules already exists (it only builds, it never
-  # installs), and on a fresh CI checkout of node-vlinder-auth nothing has
-  # been installed yet at this point. Getting this ordering wrong is exactly
-  # what caused the first real attempt at this to fail: tsc couldn't find
-  # react/react-dom at all, not a real code problem.
-  printf 'Installing node-vlinder-auth dependencies...\n'
+  # The module now builds and deploys the auth-site SPA itself during
+  # `terraform apply` (npm install of the published @vln-devsecops/auth-site
+  # bundle, config.json via local_file, and aws s3 sync + CloudFront
+  # invalidation), so there is no out-of-band deploy step here anymore. We
+  # still install node-vlinder-auth's dependencies so the e2e suite below can
+  # run against the freshly-deployed site.
+  printf 'Installing node-vlinder-auth dependencies (for the e2e suite)...\n'
   if ! (cd "${node_vlinder_auth_dir}" && npm install --no-audit --no-fund); then
     printf 'node-vlinder-auth npm install failed\n' >&2
-    exit 1
-  fi
-
-  printf 'Deploying auth-site SPA to %s...\n' "${auth_site_bucket_name}"
-  if ! "${node_vlinder_auth_dir}/packages/auth-site/scripts/deploy.sh" \
-    --bucket "${auth_site_bucket_name}" \
-    --client-id "${auth_site_client_id}"; then
-    printf 'auth-site SPA deploy failed\n' >&2
     exit 1
   fi
 
   # Explicit exit-code check + exit, not just relying on set -e: a bare
   # failing command here previously did NOT fail this step in CI (the
   # EXIT trap's own cleanup path apparently ended up determining the final
-  # exit status instead of the triggering failure), so the SPA-deploy
-  # failure above was silently reported as an overall suite "success" the
-  # first time this ran for real. Don't trust implicit propagation through
-  # the trap for this block; make it explicit.
+  # exit status instead of the triggering failure), so a failure was silently
+  # reported as an overall suite "success" the first time this ran for real.
+  # Don't trust implicit propagation through the trap for this block; make it
+  # explicit.
   printf 'Running e2e suite against %s...\n' "${auth_url}"
   if ! (
     cd "${node_vlinder_auth_dir}/e2e"

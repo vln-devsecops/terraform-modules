@@ -1038,10 +1038,18 @@ module "auth_api" {
 # variables (which fed Cognito's hosted-UI) are removed -- override theme
 # directly in the SPA's own configuration instead.
 #
-# The actual SPA build (dist/) is a deploy-pipeline concern, not managed by
-# Terraform. The auth_site_bucket_name output lets a pipeline target the
-# correct bucket. A placeholder index.html is created on first apply so the
-# distribution is immediately testable.
+# The SPA build is Terraform-managed, so `terraform apply` alone yields a
+# working site (no separate deploy step). It is delivered the same way as the
+# Lambda: the prebuilt static bundle is published to GitHub Packages as
+# @vln-devsecops/auth-site (from node-vlinder-auth), pinned via
+# site-build/package.json, and installed at apply time by
+# null_resource.auth_site_package. Terraform then writes the runtime config.json
+# (the values that vary per deployment -- the auth-site app-client id and the
+# multi-tenant flag) into the installed bundle and syncs the whole thing to the
+# S3 origin, invalidating CloudFront so the change takes effect. Version bumps
+# flow through Dependabot PRs on site-build/package.json, exactly like the
+# Lambda. When create_admin_panel is false there is no auth backend to talk to,
+# so a placeholder index.html is served instead of the real SPA.
 
 # trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket" "auth_site" {
@@ -1066,6 +1074,10 @@ resource "aws_s3_bucket_public_access_block" "auth_site" {
 }
 
 resource "aws_s3_object" "auth_site_placeholder_index" {
+  # Only when there's no real SPA to deploy (create_admin_panel = false); the
+  # SPA sync below owns index.html otherwise.
+  count = var.create_admin_panel ? 0 : 1
+
   bucket       = aws_s3_bucket.auth_site.id
   key          = "index.html"
   content      = <<-HTML
@@ -1088,6 +1100,79 @@ resource "aws_s3_object" "auth_site_placeholder_index" {
   lifecycle {
     ignore_changes = [content, content_type, cache_control]
   }
+}
+
+# --- SPA build delivery (Terraform-managed) ---------------------------------
+#
+# Installs the prebuilt @vln-devsecops/auth-site bundle at apply time (same
+# mechanism as the Lambda: npm install of a version-pinned, GitHub Packages
+# published artifact), writes the per-deployment config.json into it, and syncs
+# it to the S3 origin. Guarded on create_admin_panel: without the admin panel
+# there is no auth API for the SPA to call, so the placeholder above is served
+# instead.
+
+locals {
+  auth_site_dist_dir = "${path.module}/site-build/node_modules/@vln-devsecops/auth-site/dist"
+  auth_site_config_json = jsonencode({
+    userPoolClientId = one(aws_cognito_user_pool_client.auth_site[*].id)
+    multiTenant      = var.tenancy_mode == "multi"
+  })
+}
+
+resource "null_resource" "auth_site_package" {
+  count = var.create_admin_panel ? 1 : 0
+
+  triggers = {
+    package_json = filemd5("${path.module}/site-build/package.json")
+  }
+
+  provisioner "local-exec" {
+    command = "npm install --prefix ${path.module}/site-build --ignore-scripts"
+  }
+}
+
+# config.json is the only file that varies per deployment (the auth-site
+# app-client id and the multi-tenant flag). Terraform writes it directly into
+# the installed bundle so the sync below picks it up. Uses local_file, per the
+# design intent that Terraform -- not a deploy script -- produces config.json.
+resource "local_file" "auth_site_config" {
+  count = var.create_admin_panel ? 1 : 0
+
+  filename = "${local.auth_site_dist_dir}/config.json"
+  content  = local.auth_site_config_json
+
+  depends_on = [null_resource.auth_site_package]
+}
+
+resource "null_resource" "auth_site_deploy" {
+  count = var.create_admin_panel ? 1 : 0
+
+  # Redeploy when the pinned SPA version changes (package.json bump) or when the
+  # per-deployment config.json changes. Content of a given published version is
+  # immutable, so filemd5 of the pin is a faithful proxy for "the SPA changed".
+  triggers = {
+    package_json = filemd5("${path.module}/site-build/package.json")
+    config       = local.auth_site_config_json
+    bucket       = aws_s3_bucket.auth_site.id
+    distribution = aws_cloudfront_distribution.auth_site.id
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
+      set -euo pipefail
+      aws s3 sync "${local.auth_site_dist_dir}" "s3://${aws_s3_bucket.auth_site.id}/" --delete
+      aws cloudfront create-invalidation \
+        --distribution-id "${aws_cloudfront_distribution.auth_site.id}" \
+        --paths "/*"
+    EOT
+  }
+
+  depends_on = [
+    null_resource.auth_site_package,
+    local_file.auth_site_config,
+    aws_s3_bucket_policy.auth_site,
+  ]
 }
 
 resource "aws_cloudfront_origin_access_control" "auth_site" {
