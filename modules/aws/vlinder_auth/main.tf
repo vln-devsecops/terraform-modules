@@ -371,8 +371,12 @@ resource "aws_dynamodb_table" "tenants" {
 
   global_secondary_index {
     name            = "emailDomain-index"
-    hash_key        = "emailDomain"
     projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "emailDomain"
+      key_type       = "HASH"
+    }
   }
 
   point_in_time_recovery {
