@@ -72,6 +72,61 @@ run "table_name_and_tags_match_contract" {
   }
 }
 
+run "global_secondary_index_uses_key_schema" {
+  command = plan
+
+  variables {
+    app_name                = "sampleapp"
+    deployment_environment  = "dev"
+    short_deployment_region = "useast1"
+    function                = "events"
+    hash_key                = "pk"
+    range_key               = "sk"
+    kms_key_policy_json     = jsonencode({ Version = "2012-10-17", Statement = [] })
+    attributes = [
+      {
+        name = "pk"
+        type = "S"
+      },
+      {
+        name = "sk"
+        type = "S"
+      },
+      {
+        name = "gsi1pk"
+        type = "S"
+      },
+      {
+        name = "gsi1sk"
+        type = "S"
+      },
+    ]
+    global_secondary_indices = [
+      {
+        name            = "gsi1"
+        projection_type = "ALL"
+        hash_key        = "gsi1pk"
+        range_key       = "gsi1sk"
+      },
+    ]
+    local_secondary_indices = []
+  }
+
+  assert {
+    condition     = length(aws_dynamodb_table.this.global_secondary_index) == 1
+    error_message = "Expected exactly one global secondary index to be planned."
+  }
+
+  assert {
+    condition = alltrue([
+      for gsi in aws_dynamodb_table.this.global_secondary_index :
+      contains(gsi.key_schema, { attribute_name = "gsi1pk", key_type = "HASH" }) &&
+      contains(gsi.key_schema, { attribute_name = "gsi1sk", key_type = "RANGE" })
+    ])
+    error_message = "GSI must define its hash/range key via key_schema (not the deprecated hash_key/range_key arguments)."
+  }
+}
+
 run "optional_iam_user_attachments_are_created" {
   command = plan
 

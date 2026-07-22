@@ -57,11 +57,18 @@ resource "aws_dynamodb_table" "this" {
     content {
       name               = global_secondary_index.value.name
       projection_type    = global_secondary_index.value.projection_type
-      hash_key           = global_secondary_index.value.hash_key
-      range_key          = global_secondary_index.value.range_key
       write_capacity     = global_secondary_index.value.write_capacity
       read_capacity      = global_secondary_index.value.read_capacity
       non_key_attributes = global_secondary_index.value.non_key_attributes
+
+      key_schema {
+        attribute_name = global_secondary_index.value.hash_key
+        key_type       = "HASH"
+      }
+      key_schema {
+        attribute_name = global_secondary_index.value.range_key
+        key_type       = "RANGE"
+      }
     }
   }
 
