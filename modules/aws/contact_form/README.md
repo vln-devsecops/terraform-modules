@@ -16,6 +16,36 @@ functions, each behind its own Function URL.
   `admin_allowed_principal_arns` (AWS_IAM auth alone does not implicitly
   grant any caller invoke access).
 
+## Permissions your apply role needs
+
+This module creates resource types many roots have never provisioned before, so
+a role that applies the rest of a typical site's infrastructure is usually
+missing several of these. None of the gaps are visible to `terraform validate`,
+`terraform plan` or `terraform test` -- they surface only on a real apply, one
+at a time, as the apply reaches each resource.
+
+Grant all of the following up front rather than discovering them across several
+failed applies:
+
+- **DynamoDB** -- the table. `AmazonDynamoDBFullAccess` covers it.
+- **KMS management plane** -- creating, tagging and aliasing the CMKs.
+  `AWSKeyManagementServicePowerUser` is the closest AWS-managed policy; note
+  there is no `*FullAccess` tier for KMS.
+- **KMS data plane** -- `kms:GenerateDataKey`, `Decrypt`, `Encrypt`,
+  `CreateGrant` and friends. `AWSKeyManagementServicePowerUser` grants **none**
+  of these. Creating a Secrets Manager secret, a DynamoDB table or a Lambda with
+  encrypted environment variables under a customer-managed key requires the
+  calling principal to be able to *use* that key for envelope encryption, not
+  merely to have created it. Without these the apply fails with a bare
+  `Access to KMS is not allowed`.
+- **`iam:CreatePolicy` scoped to `iampolicy-ddb-*`** -- the composed
+  `modules/aws/dynamodb` creates its own read/write policy named
+  `iampolicy-ddb-<app>-<env>-<function>-rw`, which does **not** start with your
+  `app_name`. A role whose IAM permissions are scoped to `<app_name>*` resource
+  patterns will not match it.
+- **Secrets Manager** -- the reCAPTCHA secret. `SecretsManagerReadWrite` covers
+  it.
+
 ## Lambda source
 
 Lambda source is consumed from `@vln-devsecops/contact-form-lambda` on GitHub
@@ -23,6 +53,23 @@ Packages rather than vendored here, so version bumps flow through Dependabot
 PRs on `lambda-build/package.json`. A `null_resource` installs the package at
 apply time; `archive_file` then zips the installed `dist/` output. Contract
 tests mock the archive provider, so they don't require a live npm install.
+
+Both functions share **one** zip. The build produces two self-contained bundles
+at `dist/submit/handler.js` and `dist/admin/handler.js`, so the archive covers
+the whole `dist/` tree and each function points at its own subdirectory via
+`handler = "<subdir>/handler.handler"`. There is no per-function zip and no
+per-function `source_code_hash`.
+
+The install runs on **every** apply, but the command itself skips `npm install`
+when the target directory is already present. Keying the trigger on
+`package.json`'s content instead would be wrong on ephemeral CI runners: state
+would say "already installed" while the runner's filesystem is empty, and
+`archive_file` would then fail reading a directory that only ever existed on a
+previous runner's disk. Reinstalling unconditionally would be equally wrong --
+two `npm install` runs of identical content produce different zip bytes
+(fresh timestamps and file ordering), so every apply would show a spurious
+Lambda redeployment. Running the provisioner every time while making the work
+itself idempotent is what avoids both.
 
 To install locally before running `terraform validate`/`terraform test`:
 
