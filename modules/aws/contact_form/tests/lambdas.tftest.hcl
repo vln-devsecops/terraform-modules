@@ -64,6 +64,116 @@ variables {
   deployment_environment = "prod"
 }
 
+run "fixed_names_include_a_random_per_stack_suffix" {
+  command = plan
+
+  override_resource {
+    target          = random_string.unguessable
+    override_during = plan
+    values = {
+      result = "abcd1234"
+    }
+  }
+
+  assert {
+    condition     = aws_kms_alias.this.name == "alias/myapp-prod-contact-form-abcd1234"
+    error_message = "The KMS alias should include the per-stack random suffix so it never collides with a predecessor still inside its deletion window."
+  }
+
+  assert {
+    condition     = aws_secretsmanager_secret.recaptcha.name == "myapp-prod-contact-form-recaptcha-secret-abcd1234"
+    error_message = "The reCAPTCHA secret should include the per-stack random suffix so it never collides with a predecessor still inside its deletion window."
+  }
+
+  assert {
+    condition     = aws_iam_role.submit.name == "myapp-prod-contact-form-submit-abcd1234"
+    error_message = "The submit IAM role should include the per-stack random suffix."
+  }
+
+  assert {
+    condition     = aws_iam_role.admin.name == "myapp-prod-contact-form-admin-abcd1234"
+    error_message = "The admin IAM role should include the per-stack random suffix."
+  }
+
+  assert {
+    condition     = aws_iam_policy.submit.name == "myapp-prod-contact-form-submit-abcd1234"
+    error_message = "The submit IAM policy should include the per-stack random suffix."
+  }
+
+  assert {
+    condition     = aws_iam_policy.admin.name == "myapp-prod-contact-form-admin-abcd1234"
+    error_message = "The admin IAM policy should include the per-stack random suffix."
+  }
+
+  assert {
+    condition     = aws_lambda_function.submit.function_name == "myapp-prod-contact-form-submit-abcd1234"
+    error_message = "The submit Lambda function should include the per-stack random suffix."
+  }
+
+  assert {
+    condition     = aws_lambda_function.admin.function_name == "myapp-prod-contact-form-admin-abcd1234"
+    error_message = "The admin Lambda function should include the per-stack random suffix."
+  }
+}
+
+run "a_different_random_draw_produces_non_colliding_names" {
+  command = plan
+
+  # Same app_name/deployment_environment as the previous run (two stacks --
+  # e.g. concurrent PR previews, or a preview re-applied while a prior
+  # destroy's resources are still inside their deletion window), but a
+  # different random draw, since each stack's random_string.unguessable is
+  # generated independently in its own state. Every fixed name must move
+  # with it so the two stacks never collide.
+  override_resource {
+    target          = random_string.unguessable
+    override_during = plan
+    values = {
+      result = "zyxw9876"
+    }
+  }
+
+  assert {
+    condition     = aws_kms_alias.this.name == "alias/myapp-prod-contact-form-zyxw9876"
+    error_message = "A different random draw must produce a different KMS alias name."
+  }
+
+  assert {
+    condition     = aws_secretsmanager_secret.recaptcha.name == "myapp-prod-contact-form-recaptcha-secret-zyxw9876"
+    error_message = "A different random draw must produce a different reCAPTCHA secret name."
+  }
+
+  assert {
+    condition     = aws_iam_role.submit.name == "myapp-prod-contact-form-submit-zyxw9876"
+    error_message = "A different random draw must produce a different submit IAM role name."
+  }
+
+  assert {
+    condition     = aws_iam_role.admin.name == "myapp-prod-contact-form-admin-zyxw9876"
+    error_message = "A different random draw must produce a different admin IAM role name."
+  }
+
+  assert {
+    condition     = aws_iam_policy.submit.name == "myapp-prod-contact-form-submit-zyxw9876"
+    error_message = "A different random draw must produce a different submit IAM policy name."
+  }
+
+  assert {
+    condition     = aws_iam_policy.admin.name == "myapp-prod-contact-form-admin-zyxw9876"
+    error_message = "A different random draw must produce a different admin IAM policy name."
+  }
+
+  assert {
+    condition     = aws_lambda_function.submit.function_name == "myapp-prod-contact-form-submit-zyxw9876"
+    error_message = "A different random draw must produce a different submit Lambda function name."
+  }
+
+  assert {
+    condition     = aws_lambda_function.admin.function_name == "myapp-prod-contact-form-admin-zyxw9876"
+    error_message = "A different random draw must produce a different admin Lambda function name."
+  }
+}
+
 run "both_lambdas_run_on_the_expected_runtime" {
   command = plan
 
