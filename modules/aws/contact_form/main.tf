@@ -5,10 +5,28 @@ locals {
   })
 
   short_region = replace(data.aws_region.current.region, "-", "")
+
+  # Every one of this module's own fixed-name resources (the KMS alias, the
+  # IAM roles/policies, the reCAPTCHA secret and the two Lambda functions)
+  # would otherwise be named deterministically from just app_name and
+  # deployment_environment. Two stacks sharing those values -- concurrent
+  # PR-preview stacks, or a preview re-applied while a prior destroy's
+  # resources are still inside their deletion window -- would then fight
+  # over identical AWS resource names. random_string.unguessable is
+  # generated once and persisted in this stack's own state, so it stays
+  # stable across repeat applies of the same stack but differs across
+  # stacks (a fresh state after a destroy draws a fresh value too).
+  suffix = random_string.unguessable.result
 }
 
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
+
+resource "random_string" "unguessable" {
+  length  = 8
+  special = false
+  upper   = false
+}
 
 # --- Storage -----------------------------------------------------------------
 #
@@ -73,7 +91,7 @@ resource "aws_kms_key" "this" {
 }
 
 resource "aws_kms_alias" "this" {
-  name          = "alias/${var.app_name}-${var.deployment_environment}-contact-form"
+  name          = "alias/${var.app_name}-${var.deployment_environment}-contact-form-${local.suffix}"
   target_key_id = aws_kms_key.this.key_id
 }
 
@@ -85,7 +103,7 @@ resource "aws_kms_alias" "this" {
 
 resource "aws_secretsmanager_secret" "recaptcha" {
   # checkov:skip=CKV2_AWS_57:Secret rotation is caller-configurable, not wired at module level
-  name        = "${var.app_name}-${var.deployment_environment}-contact-form-recaptcha-secret"
+  name        = "${var.app_name}-${var.deployment_environment}-contact-form-recaptcha-secret-${local.suffix}"
   description = "reCAPTCHA v3 secret key for the ${var.app_name} contact form (${var.deployment_environment})."
   kms_key_id  = aws_kms_key.this.arn
   tags        = merge(local.common_tags, { rg = "security" })
@@ -177,7 +195,7 @@ data "aws_iam_policy_document" "lambda_assume_role" {
 # --- Submit Lambda (public; no app-level auth, reCAPTCHA-gated) -------------
 
 resource "aws_iam_role" "submit" {
-  name               = "${var.app_name}-${var.deployment_environment}-contact-form-submit"
+  name               = "${var.app_name}-${var.deployment_environment}-contact-form-submit-${local.suffix}"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
   tags               = local.common_tags
 }
@@ -188,7 +206,7 @@ resource "aws_iam_role_policy_attachment" "submit_logging" {
 }
 
 resource "aws_iam_policy" "submit" {
-  name = "${var.app_name}-${var.deployment_environment}-contact-form-submit"
+  name = "${var.app_name}-${var.deployment_environment}-contact-form-submit-${local.suffix}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -228,7 +246,7 @@ resource "aws_lambda_function" "submit" {
   # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
   # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
   # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
-  function_name    = "${var.app_name}-${var.deployment_environment}-contact-form-submit"
+  function_name    = "${var.app_name}-${var.deployment_environment}-contact-form-submit-${local.suffix}"
   role             = aws_iam_role.submit.arn
   handler          = "submit/handler.handler"
   runtime          = "nodejs22.x"
@@ -280,7 +298,7 @@ resource "aws_lambda_function_url" "submit" {
 # construction (there's no route-level choice left to get wrong).
 
 resource "aws_iam_role" "admin" {
-  name               = "${var.app_name}-${var.deployment_environment}-contact-form-admin"
+  name               = "${var.app_name}-${var.deployment_environment}-contact-form-admin-${local.suffix}"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
   tags               = local.common_tags
 }
@@ -291,7 +309,7 @@ resource "aws_iam_role_policy_attachment" "admin_logging" {
 }
 
 resource "aws_iam_policy" "admin" {
-  name = "${var.app_name}-${var.deployment_environment}-contact-form-admin"
+  name = "${var.app_name}-${var.deployment_environment}-contact-form-admin-${local.suffix}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -325,7 +343,7 @@ resource "aws_lambda_function" "admin" {
   # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
   # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
   # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
-  function_name    = "${var.app_name}-${var.deployment_environment}-contact-form-admin"
+  function_name    = "${var.app_name}-${var.deployment_environment}-contact-form-admin-${local.suffix}"
   role             = aws_iam_role.admin.arn
   handler          = "admin/handler.handler"
   runtime          = "nodejs22.x"

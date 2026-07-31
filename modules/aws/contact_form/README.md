@@ -81,6 +81,19 @@ This requires `NODE_AUTH_TOKEN` (a PAT with `read:packages` scope, or
 `GITHUB_TOKEN` in CI) set for the `@vln-devsecops` scope per
 `lambda-build/.npmrc`.
 
+## Resource naming
+
+The KMS key/alias, the reCAPTCHA secret, the IAM roles/policies and the two
+Lambda functions all include a random per-stack suffix
+(`random_string.unguessable`, generated once and persisted in this stack's own
+state) after `${app_name}-${deployment_environment}`. Without it, two stacks
+sharing those values -- concurrent PR-preview stacks, or a preview re-applied
+while a prior destroy's resources are still inside their deletion window --
+would fight over identical AWS resource names (KMS keys and Secrets Manager
+secrets are especially prone to this, since a deleted one doesn't free its
+name/alias until its deletion window elapses). Read the names from this
+module's outputs rather than reconstructing them.
+
 ## Post-apply step
 
 Terraform creates the reCAPTCHA secret with a placeholder value only. Set the
