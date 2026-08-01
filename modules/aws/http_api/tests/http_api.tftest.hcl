@@ -191,6 +191,174 @@ run "jwt_authorizer_is_wired_to_protected_route" {
   }
 }
 
+run "iam_authorization_is_applied_per_route" {
+  command = plan
+
+  variables {
+    name = "iam-api"
+    jwt_authorizers = {
+      coppice = {
+        issuer_url = "https://auth.example.com"
+        audience   = ["api.example.com"]
+      }
+    }
+    routes = {
+      submit_route = {
+        route_key            = "POST /submit"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:submit-fn"
+        lambda_function_name = "submit-fn"
+      }
+      admin_route = {
+        route_key            = "GET /admin"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:admin-fn"
+        lambda_function_name = "admin-fn"
+        authorization_type   = "AWS_IAM"
+      }
+      protected_route = {
+        route_key            = "POST /protected"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:protected-fn"
+        lambda_function_name = "protected-fn"
+        authorizer_key       = "coppice"
+      }
+    }
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.this["admin_route"].authorization_type == "AWS_IAM"
+    error_message = "Admin route must have authorization_type AWS_IAM."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.this["admin_route"].authorizer_id == null
+    error_message = "IAM-authorized routes must not be wired to a JWT authorizer."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.this["submit_route"].authorization_type == "NONE"
+    error_message = "Public route must have authorization_type NONE."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.this["protected_route"].authorization_type == "JWT"
+    error_message = "JWT route must still have authorization_type JWT alongside an IAM route."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.this["protected_route"].authorizer_id == aws_apigatewayv2_authorizer.jwt["coppice"].id
+    error_message = "JWT route must be wired to the referenced authorizer."
+  }
+
+  assert {
+    condition     = length(aws_lambda_permission.this) == 3
+    error_message = "Every route must get a Lambda permission regardless of authorization type."
+  }
+}
+
+run "explicit_authorization_types_match_derived_defaults" {
+  command = plan
+
+  variables {
+    name = "explicit-auth-api"
+    jwt_authorizers = {
+      coppice = {
+        issuer_url = "https://auth.example.com"
+        audience   = ["api.example.com"]
+      }
+    }
+    routes = {
+      explicit_none = {
+        route_key            = "GET /public"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:public-fn"
+        lambda_function_name = "public-fn"
+        authorization_type   = "NONE"
+      }
+      explicit_jwt = {
+        route_key            = "POST /protected"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:protected-fn"
+        lambda_function_name = "protected-fn"
+        authorization_type   = "JWT"
+        authorizer_key       = "coppice"
+      }
+    }
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.this["explicit_none"].authorization_type == "NONE"
+    error_message = "Explicit NONE must be honoured."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.this["explicit_jwt"].authorization_type == "JWT"
+    error_message = "Explicit JWT must be honoured."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.this["explicit_jwt"].authorizer_id == aws_apigatewayv2_authorizer.jwt["coppice"].id
+    error_message = "Explicit JWT route must still be wired to the referenced authorizer."
+  }
+}
+
+run "invalid_authorization_type_is_rejected" {
+  command = plan
+
+  variables {
+    name = "invalid-auth-api"
+    routes = {
+      bad_route = {
+        route_key            = "GET /bad"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:bad-fn"
+        lambda_function_name = "bad-fn"
+        authorization_type   = "IAM"
+      }
+    }
+  }
+
+  expect_failures = [var.routes]
+}
+
+run "iam_route_with_authorizer_key_is_rejected" {
+  command = plan
+
+  variables {
+    name = "conflicting-auth-api"
+    jwt_authorizers = {
+      coppice = {
+        issuer_url = "https://auth.example.com"
+        audience   = ["api.example.com"]
+      }
+    }
+    routes = {
+      bad_route = {
+        route_key            = "GET /admin"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:admin-fn"
+        lambda_function_name = "admin-fn"
+        authorization_type   = "AWS_IAM"
+        authorizer_key       = "coppice"
+      }
+    }
+  }
+
+  expect_failures = [var.routes]
+}
+
+run "jwt_route_without_authorizer_key_is_rejected" {
+  command = plan
+
+  variables {
+    name = "jwt-missing-authorizer-api"
+    routes = {
+      bad_route = {
+        route_key            = "GET /protected"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:protected-fn"
+        lambda_function_name = "protected-fn"
+        authorization_type   = "JWT"
+      }
+    }
+  }
+
+  expect_failures = [var.routes]
+}
+
 run "custom_domain_creates_domain_name_and_route53_record" {
   command = plan
 

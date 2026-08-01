@@ -1,4 +1,11 @@
 locals {
+  # Effective authorization type per route: explicit when set, otherwise derived
+  # from whether the route references a JWT authorizer.
+  route_authorization_types = {
+    for route_key, route in var.routes :
+    route_key => coalesce(route.authorization_type, route.authorizer_key != null ? "JWT" : "NONE")
+  }
+
   # Build a flat map of route_key → authorizer_id for routes that reference an authorizer
   route_authorizer_ids = {
     for route_key, route in var.routes :
@@ -85,7 +92,7 @@ resource "aws_apigatewayv2_route" "this" {
   route_key = each.value.route_key
   target    = "integrations/${aws_apigatewayv2_integration.this[each.key].id}"
 
-  authorization_type = each.value.authorizer_key != null ? "JWT" : "NONE"
+  authorization_type = local.route_authorization_types[each.key]
   authorizer_id      = try(local.route_authorizer_ids[each.key], null)
 }
 

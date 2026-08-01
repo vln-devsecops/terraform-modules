@@ -44,6 +44,14 @@ module "forms_api" {
       lambda_function_name = var.newsletter_lambda_name
       authorizer_key       = "coppice"
     }
+    # Owner-only route: callers must sign requests with SigV4 and hold an IAM
+    # policy allowing execute-api:Invoke on this route.
+    admin = {
+      route_key            = "GET /admin"
+      lambda_function_arn  = var.admin_lambda_arn
+      lambda_function_name = var.admin_lambda_name
+      authorization_type   = "AWS_IAM"
+    }
   }
 
   custom_domain_name            = var.custom_domain_name

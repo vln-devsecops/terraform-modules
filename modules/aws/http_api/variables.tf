@@ -23,16 +23,48 @@ variable "cors_configuration" {
 }
 
 variable "routes" {
-  description = "Map of routes to create. Each key is a logical route identifier."
+  description = <<-EOT
+    Map of routes to create. Each key is a logical route identifier.
+
+    `authorization_type` selects how the route is authorized and accepts `NONE`,
+    `AWS_IAM`, or `JWT`. When left null it is derived from `authorizer_key`:
+    `JWT` when an authorizer is referenced, `NONE` otherwise. `authorizer_key`
+    may only be set for JWT routes.
+  EOT
   type = map(object({
     route_key              = string
     lambda_function_arn    = string
     lambda_function_name   = string
     payload_format_version = optional(string, "2.0")
     authorizer_key         = optional(string, null)
+    authorization_type     = optional(string, null)
     timeout_milliseconds   = optional(number, 29000)
   }))
   default = {}
+
+  validation {
+    condition = alltrue([
+      for route in var.routes : contains(["NONE", "AWS_IAM", "JWT"], route.authorization_type)
+      if route.authorization_type != null
+    ])
+    error_message = "Each route's authorization_type must be one of NONE, AWS_IAM, or JWT."
+  }
+
+  validation {
+    condition = alltrue([
+      for route in var.routes : route.authorizer_key != null
+      if route.authorization_type == "JWT"
+    ])
+    error_message = "Routes with authorization_type JWT must reference a JWT authorizer via authorizer_key."
+  }
+
+  validation {
+    condition = alltrue([
+      for route in var.routes : route.authorizer_key == null
+      if route.authorization_type != null && route.authorization_type != "JWT"
+    ])
+    error_message = "Routes with authorization_type NONE or AWS_IAM must not set authorizer_key."
+  }
 }
 
 variable "jwt_authorizers" {

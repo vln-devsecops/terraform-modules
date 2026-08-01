@@ -24,7 +24,7 @@ Version tags should only be created or moved after the relevant pipelines have b
 | `modules/aws/deployment_bucket` | S3 bucket for Lambda deployment archives, with KMS encryption and versioning |
 | `modules/aws/dynamodb` | DynamoDB table with optional KMS encryption, TTL, and IAM access policies |
 | `modules/aws/github_oidc` | GitHub Actions OIDC identity provider and IAM roles for keyless AWS access |
-| `modules/aws/http_api` | API Gateway HTTP API (v2) with Lambda integrations, JWT authorizers (e.g. Coppice), and optional custom domain |
+| `modules/aws/http_api` | API Gateway HTTP API (v2) with Lambda integrations, per-route JWT or `AWS_IAM` authorization, and optional custom domain |
 | `modules/aws/lambda` | Lambda function backed by an S3 archive, with KMS, X-Ray, optional URL and Secrets Manager |
 | `modules/aws/lambda-at-edge` | Lambda@Edge variant with CloudFront replication trust and IAM |
 | `modules/aws/mail` | SES domain identity, DKIM, Route 53 records, and sending IAM policy |

@@ -17,6 +17,12 @@ variable "newsletter_lambda_arn" {
 variable "newsletter_lambda_name" {
   type = string
 }
+variable "admin_lambda_arn" {
+  type = string
+}
+variable "admin_lambda_name" {
+  type = string
+}
 variable "custom_domain_name" {
   type    = string
   default = null
