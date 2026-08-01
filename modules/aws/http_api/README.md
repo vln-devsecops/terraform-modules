@@ -1,8 +1,39 @@
 # aws/http_api
 
-Creates an AWS API Gateway HTTP API (v2) with Lambda proxy integrations, optional JWT authorizers, optional CloudWatch access logging, and optional custom domain with Route 53 alias.
+Creates an AWS API Gateway HTTP API (v2) with Lambda proxy integrations, optional JWT authorizers, optional IAM (SigV4) authorization, optional CloudWatch access logging, and optional custom domain with Route 53 alias.
 
 Routes are declared as a map; each route creates an integration, a route resource, and a Lambda permission. JWT authorizers are declared separately and referenced by key from individual routes.
+
+## Route authorization
+
+Each route is authorized independently through the optional `authorization_type` field:
+
+| `authorization_type` | Meaning |
+| --- | --- |
+| unset (default) | Derived from `authorizer_key`: `JWT` when an authorizer is referenced, `NONE` otherwise. |
+| `NONE` | Public route. `authorizer_key` must not be set. |
+| `AWS_IAM` | Caller must present SigV4-signed requests; access is granted by IAM policy on the `execute-api:Invoke` action. `authorizer_key` must not be set. |
+| `JWT` | Validated by the referenced JWT authorizer; `authorizer_key` is required. |
+
+This lets a single API mix a public route with an owner-only IAM-signed route:
+
+```hcl
+routes = {
+  submit = {
+    route_key            = "POST /submit"
+    lambda_function_arn  = aws_lambda_function.submit.arn
+    lambda_function_name = aws_lambda_function.submit.function_name
+  }
+  admin = {
+    route_key            = "GET /admin"
+    lambda_function_arn  = aws_lambda_function.admin.arn
+    lambda_function_name = aws_lambda_function.admin.function_name
+    authorization_type   = "AWS_IAM"
+  }
+}
+```
+
+Note the value is `AWS_IAM`, matching the API Gateway v2 route attribute, not `IAM`.
 
 ## Inputs
 
@@ -11,7 +42,7 @@ Routes are declared as a map; each route creates an integration, a route resourc
 | `name` | Name of the HTTP API. | `string` |
 | `description` | Description of the HTTP API. | `string` |
 | `cors_configuration` | CORS configuration for the API. | `object(...)` |
-| `routes` | Map of routes to create. Each key is a logical route identifier. | `map(object(...))` |
+| `routes` | Map of routes to create. Each key is a logical route identifier; see [Route authorization](#route-authorization). | `map(object(...))` |
 | `jwt_authorizers` | Map of JWT authorizers. Key is referenced by routes via `authorizer_key`. | `map(object(...))` |
 | `stage_name` | API Gateway stage name. | `string` |
 | `auto_deploy` | Whether to auto-deploy changes to the stage. | `bool` |
@@ -70,6 +101,12 @@ module "forms_api" {
       lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:newsletter"
       lambda_function_name = "newsletter"
       authorizer_key       = "coppice"
+    }
+    admin = {
+      route_key            = "GET /admin"
+      lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:admin"
+      lambda_function_name = "admin"
+      authorization_type   = "AWS_IAM"
     }
   }
 
