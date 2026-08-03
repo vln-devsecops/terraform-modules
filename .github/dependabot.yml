@@ -300,7 +300,6 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
-
   - package-ecosystem: npm
     directory: /modules/aws/contact_form/lambda-build
     target-branch: main
