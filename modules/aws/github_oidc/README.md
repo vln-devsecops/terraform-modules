@@ -52,7 +52,7 @@ current account identity instead.
 
 ```hcl
 module "github_oidc" {
-  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/github_oidc?ref=v0.5"
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/github_oidc?ref=v0.19"
 
   tags = {
     org     = "my-org"
@@ -96,7 +96,7 @@ If the OIDC provider was already created by another module in the same root:
 
 ```hcl
 module "github_oidc_extra_roles" {
-  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/github_oidc?ref=v0.5"
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/github_oidc?ref=v0.19"
 
   create_oidc_provider = false  # provider already exists in this account
 
@@ -256,5 +256,5 @@ unless you have a specific reason — consistent org-wide behaviour is easier to
   but the IAM API requires at least one entry.
 
 The repository branch should remain `main`, while module consumers should normally prefer
-the moving two-level tag form such as `v0.5`. That moving tag should only advance after
+the moving two-level tag form such as `v0.19`. That moving tag should only advance after
 the relevant pipelines have passed on the target commit.
