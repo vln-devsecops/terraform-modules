@@ -466,9 +466,19 @@ module "user_role_assignments" {
 # "<subdir>/handler.handler".
 
 resource "null_resource" "lambda_package" {
+  # install_present guards against a fresh checkout against existing remote
+  # state: the lockfile hash alone is unchanged there (it's the same file
+  # that produced the state), so without this the provisioner would never
+  # run and archive_file would zip a missing or stale local install. This is
+  # eventually consistent rather than exact -- the first apply after a fresh
+  # `npm ci` records the pre-install "missing" value, so the next plan (now
+  # seeing the installed tree) diffs once more and reinstalls a second,
+  # redundant time before settling on "present" -- an acceptable cost for a
+  # cheap, idempotent `npm ci --ignore-scripts`.
   triggers = {
-    package_json = filemd5("${path.module}/lambda-build/package.json")
-    package_lock = filemd5("${path.module}/lambda-build/package-lock.json")
+    package_json    = filemd5("${path.module}/lambda-build/package.json")
+    package_lock    = filemd5("${path.module}/lambda-build/package-lock.json")
+    install_present = fileexists("${path.module}/lambda-build/node_modules/@vln-devsecops/auth-lambda/dist/post-confirmation/handler.js") ? "present" : "missing"
   }
 
   provisioner "local-exec" {
@@ -1131,9 +1141,14 @@ locals {
 resource "null_resource" "auth_site_package" {
   count = var.create_admin_panel ? 1 : 0
 
+  # install_present guards against a fresh checkout against existing remote
+  # state -- see the matching comment on null_resource.lambda_package for why
+  # the lockfile hash alone isn't enough, and the (self-healing, one-time
+  # redundant reinstall) tradeoff this makes.
   triggers = {
-    package_json = filemd5("${path.module}/site-build/package.json")
-    package_lock = filemd5("${path.module}/site-build/package-lock.json")
+    package_json    = filemd5("${path.module}/site-build/package.json")
+    package_lock    = filemd5("${path.module}/site-build/package-lock.json")
+    install_present = fileexists("${path.module}/site-build/node_modules/@vln-devsecops/auth-site/dist/index.html") ? "present" : "missing"
   }
 
   provisioner "local-exec" {
