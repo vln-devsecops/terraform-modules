@@ -142,3 +142,25 @@ run "admin_api_routes_cover_the_full_users_and_roles_surface" {
     error_message = "The admin API should expose a route for every admin-api handler entrypoint (matches lambda-src's own routeKey switch)."
   }
 }
+
+run "admin_api_never_exposes_a_post_route" {
+  command = plan
+
+  # admin_api_rewrite.js (the CloudFront viewer-request function on /api/v1/*)
+  # lifts the vln_auth_session cookie into the Authorization header, which
+  # turns the admin API from bearer-token semantics (CSRF-immune) into cookie
+  # semantics (CSRF-relevant) for anything a browser can be tricked into
+  # submitting. Today that's contained only because every admin route is
+  # PATCH/PUT/DELETE -- none of which a plain HTML form can send, so there's
+  # no cross-site request a victim's browser could issue that would carry the
+  # cookie. A POST route would be form-submittable and reopen that gap, so
+  # this must never silently regain one. See doc/admin-api-csrf.md for the
+  # full posture and what to build (double-submit token) if this ever needs
+  # to change.
+  assert {
+    condition = alltrue([
+      for route in local.admin_api_routes : !startswith(route.route_key, "POST ")
+    ])
+    error_message = "The admin API must not expose a POST route: the CloudFront cookie-to-Authorization-header lift makes state-changing routes CSRF-relevant, and only non-form-submittable methods (PATCH/PUT/DELETE) keep that safe."
+  }
+}
