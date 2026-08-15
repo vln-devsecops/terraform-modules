@@ -44,6 +44,25 @@ mock_provider "aws" {
     }
   }
 
+  # The auth API's IAM policy interpolates the CMK ARN and the
+  # session-signing-key secret's ARN; without plan-time defaults those
+  # expressions (and the jsonencoded policy that embeds them) stay unknown
+  # and the assertions below can't evaluate. Same reasoning as
+  # lambdas.tftest.hcl's aws_kms_key mock.
+  mock_resource "aws_kms_key" {
+    defaults = {
+      id  = "00000000-0000-0000-0000-000000000000"
+      arn = "arn:aws:kms:us-east-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+    }
+  }
+
+  mock_resource "aws_secretsmanager_secret" {
+    defaults = {
+      id  = "auth-session-signing-key-placeholder"
+      arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:auth-session-signing-key-placeholder"
+    }
+  }
+
   mock_resource "aws_cloudfront_distribution" {
     defaults = {
       id                             = "EDFDVBD632BHDS5"
@@ -228,6 +247,70 @@ run "auth_api_behavior_is_present_when_admin_panel_enabled" {
   assert {
     condition     = one(aws_lambda_function.auth_api[*].handler) == "auth-api/handler.handler"
     error_message = "The auth API Lambda should use the auth-api/handler.handler entry point."
+  }
+}
+
+run "session_signing_key_is_provisioned_via_secrets_manager_not_a_terraform_generated_value" {
+  command = plan
+
+  assert {
+    condition     = length(aws_secretsmanager_secret.auth_session_signing_key) == 1
+    error_message = "The session-signing-key secret should be provisioned when create_admin_panel is true."
+  }
+
+  assert {
+    condition     = one(aws_secretsmanager_secret.auth_session_signing_key[*].kms_key_id) == aws_kms_key.this.id
+    error_message = "The session-signing-key secret should be encrypted with the module's own CMK."
+  }
+
+  assert {
+    condition     = length(time_rotating.auth_session_signing_key) == 1 && one(time_rotating.auth_session_signing_key[*].rotation_days) == 30
+    error_message = "The session-signing-key secret should rotate on a fixed 30-day cadence."
+  }
+
+  assert {
+    condition = one(aws_lambda_function.auth_api[*].environment[0].variables["SESSION_SIGNING_KEY_SECRET_ID"]) == one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
+    error_message = "The auth API Lambda should receive the secret's ARN, not a plaintext signing key, via SESSION_SIGNING_KEY_SECRET_ID."
+  }
+
+  assert {
+    condition     = !contains(keys(one(aws_lambda_function.auth_api[*].environment[0].variables)), "SESSION_SIGNING_KEY")
+    error_message = "The auth API Lambda must not receive a plaintext SESSION_SIGNING_KEY env var."
+  }
+
+  assert {
+    condition = anytrue([
+      for stmt in jsondecode(one(aws_iam_policy.auth_api[*].policy)).Statement :
+      contains(stmt.Action, "secretsmanager:GetSecretValue") &&
+      contains(stmt.Resource, one(aws_secretsmanager_secret.auth_session_signing_key[*].arn))
+    ])
+    error_message = "The auth API Lambda's role should be able to read the session-signing-key secret, scoped to that secret's ARN."
+  }
+
+  assert {
+    condition = anytrue([
+      for stmt in jsondecode(one(aws_iam_policy.auth_api[*].policy)).Statement :
+      contains(stmt.Action, "kms:Decrypt") && contains(stmt.Resource, aws_kms_key.this.arn)
+    ])
+    error_message = "The auth API Lambda's role should be able to decrypt with the module's CMK (needed for both its own env vars and the session-signing-key secret)."
+  }
+}
+
+run "session_signing_key_secret_is_omitted_when_admin_panel_disabled" {
+  command = plan
+
+  variables {
+    create_admin_panel = false
+  }
+
+  assert {
+    condition     = length(aws_secretsmanager_secret.auth_session_signing_key) == 0
+    error_message = "The session-signing-key secret should not be provisioned when create_admin_panel is false."
+  }
+
+  assert {
+    condition     = length(time_rotating.auth_session_signing_key) == 0
+    error_message = "The session-signing-key rotation timer should not be provisioned when create_admin_panel is false."
   }
 }
 
