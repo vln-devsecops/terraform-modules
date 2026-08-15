@@ -446,13 +446,15 @@ module "user_role_assignments" {
 #
 # Lambda source is consumed from @vln-devsecops/auth-lambda on GitHub Packages
 # (published from node-vlinder-auth) rather than vendored here, so version
-# bumps flow through Dependabot PRs on lambda-build/package.json. The
-# null_resource downloads the package at apply time; archive_file then zips
-# the installed output. Contract tests mock the archive provider so they
-# don't require a live npm install.
+# bumps flow through Dependabot PRs against lambda-build/package-lock.json.
+# The null_resource installs the package at apply time via `npm ci`, which
+# installs exactly the resolved tree recorded in package-lock.json regardless
+# of the semver range in package.json -- that lockfile, not the range, is what
+# pins the build. archive_file then zips the installed output. Contract tests
+# mock the archive provider so they don't require a live npm install.
 #
 # To install locally before running terraform validate/test:
-#   npm install --prefix modules/aws/vlinder_auth/lambda-build
+#   npm ci --prefix modules/aws/vlinder_auth/lambda-build
 #
 # The build pipeline (esbuild) produces three self-contained CJS bundles at
 # dist/post-confirmation/handler.js, dist/pre-token-generation/handler.js,
@@ -466,10 +468,11 @@ module "user_role_assignments" {
 resource "null_resource" "lambda_package" {
   triggers = {
     package_json = filemd5("${path.module}/lambda-build/package.json")
+    package_lock = filemd5("${path.module}/lambda-build/package-lock.json")
   }
 
   provisioner "local-exec" {
-    command = "npm install --prefix ${path.module}/lambda-build --ignore-scripts"
+    command = "npm ci --prefix ${path.module}/lambda-build --ignore-scripts"
   }
 }
 
@@ -1046,14 +1049,16 @@ module "auth_api" {
 # working site (no separate deploy step). It is delivered the same way as the
 # Lambda: the prebuilt static bundle is published to GitHub Packages as
 # @vln-devsecops/auth-site (from node-vlinder-auth), pinned via
-# site-build/package.json, and installed at apply time by
-# null_resource.auth_site_package. Terraform then writes the runtime config.json
-# (the values that vary per deployment -- the auth-site app-client id and the
-# multi-tenant flag) into the installed bundle and syncs the whole thing to the
-# S3 origin, invalidating CloudFront so the change takes effect. Version bumps
-# flow through Dependabot PRs on site-build/package.json, exactly like the
-# Lambda. When create_admin_panel is false there is no auth backend to talk to,
-# so a placeholder index.html is served instead of the real SPA.
+# site-build/package-lock.json, and installed at apply time by
+# null_resource.auth_site_package via `npm ci` -- the lockfile, not the
+# semver range in package.json, is what pins the resolved version. Terraform
+# then writes the runtime config.json (the values that vary per deployment --
+# the auth-site app-client id and the multi-tenant flag) into the installed
+# bundle and syncs the whole thing to the S3 origin, invalidating CloudFront
+# so the change takes effect. Version bumps flow through Dependabot PRs
+# against site-build/package-lock.json, exactly like the Lambda. When
+# create_admin_panel is false there is no auth backend to talk to, so a
+# placeholder index.html is served instead of the real SPA.
 
 # trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket" "auth_site" {
@@ -1109,7 +1114,7 @@ resource "aws_s3_object" "auth_site_placeholder_index" {
 # --- SPA build delivery (Terraform-managed) ---------------------------------
 #
 # Installs the prebuilt @vln-devsecops/auth-site bundle at apply time (same
-# mechanism as the Lambda: npm install of a version-pinned, GitHub Packages
+# mechanism as the Lambda: `npm ci` of a lockfile-pinned, GitHub Packages
 # published artifact), writes the per-deployment config.json into it, and syncs
 # it to the S3 origin. Guarded on create_admin_panel: without the admin panel
 # there is no auth API for the SPA to call, so the placeholder above is served
@@ -1128,10 +1133,11 @@ resource "null_resource" "auth_site_package" {
 
   triggers = {
     package_json = filemd5("${path.module}/site-build/package.json")
+    package_lock = filemd5("${path.module}/site-build/package-lock.json")
   }
 
   provisioner "local-exec" {
-    command = "npm install --prefix ${path.module}/site-build --ignore-scripts"
+    command = "npm ci --prefix ${path.module}/site-build --ignore-scripts"
   }
 }
 
@@ -1151,11 +1157,13 @@ resource "local_file" "auth_site_config" {
 resource "null_resource" "auth_site_deploy" {
   count = var.create_admin_panel ? 1 : 0
 
-  # Redeploy when the pinned SPA version changes (package.json bump) or when the
-  # per-deployment config.json changes. Content of a given published version is
-  # immutable, so filemd5 of the pin is a faithful proxy for "the SPA changed".
+  # Redeploy when the pinned SPA version changes (package-lock.json bump,
+  # since that lockfile -- not the package.json semver range -- pins the
+  # resolved version) or when the per-deployment config.json changes.
+  # Content of a given published version is immutable, so filemd5 of the
+  # lockfile is a faithful proxy for "the SPA changed".
   triggers = {
-    package_json = filemd5("${path.module}/site-build/package.json")
+    package_lock = filemd5("${path.module}/site-build/package-lock.json")
     config       = local.auth_site_config_json
     bucket       = aws_s3_bucket.auth_site.id
     distribution = aws_cloudfront_distribution.auth_site.id
