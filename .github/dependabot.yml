@@ -10,10 +10,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /modules/aws/dynamodb
     target-branch: main
@@ -23,10 +19,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /modules/aws/mail
     target-branch: main
@@ -36,10 +28,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/deployment_bucket
     target-branch: main
@@ -49,10 +37,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/dynamodb
     target-branch: main
@@ -62,10 +46,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/mail
     target-branch: main
@@ -75,10 +55,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /modules/aws/acm_certificate
     target-branch: main
@@ -88,10 +64,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /modules/aws/central_logs
     target-branch: main
@@ -101,10 +73,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /modules/aws/github_oidc
     target-branch: main
@@ -114,10 +82,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /modules/aws/http_api
     target-branch: main
@@ -127,10 +91,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /modules/aws/lambda
     target-branch: main
@@ -140,10 +100,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /modules/aws/lambda-at-edge
     target-branch: main
@@ -153,10 +109,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /modules/aws/static_site
     target-branch: main
@@ -166,10 +118,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /modules/aws/vpc
     target-branch: main
@@ -179,10 +127,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/acm_certificate
     target-branch: main
@@ -192,10 +136,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/central_logs
     target-branch: main
@@ -205,10 +145,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/github_oidc
     target-branch: main
@@ -218,10 +154,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/http_api
     target-branch: main
@@ -231,10 +163,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/lambda
     target-branch: main
@@ -244,10 +172,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/lambda-at-edge
     target-branch: main
@@ -257,10 +181,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/static_site
     target-branch: main
@@ -270,10 +190,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: terraform
     directory: /examples/aws/vpc
     target-branch: main
@@ -283,10 +199,6 @@ updates:
     labels:
       - dependencies
       - terraform
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: github-actions
     directory: /
     target-branch: main
@@ -296,10 +208,6 @@ updates:
     labels:
       - dependencies
       - github-actions
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: npm
     directory: /modules/aws/contact_form/lambda-build
     target-branch: main
@@ -309,6 +217,3 @@ updates:
     labels:
       - dependencies
       - npm
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
