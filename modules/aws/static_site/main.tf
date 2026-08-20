@@ -118,6 +118,10 @@ resource "aws_cloudfront_function" "viewer_request" {
   publish = true
   comment = "Viewer-request handling for ${var.site_name}"
   code    = local.viewer_request_code
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 data "aws_iam_policy_document" "site_cloudfront_read" {
