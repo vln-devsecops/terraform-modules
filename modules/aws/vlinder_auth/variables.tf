@@ -93,6 +93,26 @@ variable "password_policy" {
   default = {}
 }
 
+variable "advanced_security_mode" {
+  description = "Cognito advanced security / threat protection: compromised-credential checks, adaptive auth, risk-based challenges. AUDIT logs risk signals without changing sign-in UX; ENFORCED also challenges/blocks high-risk sign-ins; OFF disables it. Defaults to OFF: any non-OFF value requires the user pool's Plus feature plan (or the Lite-tier per-MAU add-on) and is billed per MAU on a tiered schedule regardless of AUDIT vs ENFORCED, so this module doesn't turn it on for you -- set to AUDIT (recommended first step) or ENFORCED once you've confirmed the cost fits your budget. See doc/auth-api-rate-limiting.md and https://aws.amazon.com/cognito/pricing/."
+  type        = string
+  default     = "OFF"
+
+  validation {
+    condition     = contains(["AUDIT", "ENFORCED", "OFF"], var.advanced_security_mode)
+    error_message = "advanced_security_mode must be AUDIT, ENFORCED, or OFF."
+  }
+}
+
+variable "auth_api_throttling" {
+  description = "Per-route throttle limits applied to the public /auth/* routes (signup, password, forgot, resend, etc.) to blunt credential stuffing, user enumeration, and signup/email-send abuse. This is an aggregate cap shared across all callers of a route, not per-source-IP -- see doc/auth-api-rate-limiting.md for why waf_web_acl_arn is still recommended alongside it. burst_limit is a token-bucket capacity (a count of requests that may land instantaneously, not a per-second figure); rate_limit is the steady-state refill rate in requests per second. E.g. the defaults (burst_limit=10, rate_limit=5) allow a burst of up to 10 requests, then throttle to 5 req/s sustained, per route, aggregated across all callers."
+  type = object({
+    burst_limit = optional(number, 10) # token-bucket capacity (request count, not a rate)
+    rate_limit  = optional(number, 5)  # steady-state refill rate, in requests/second
+  })
+  default = {}
+}
+
 variable "clients" {
   description = "Map of app clients this module should create for the consumer's own frontend(s), keyed by a logical name. The admin panel's own client is always created separately and does not need an entry here. Empty by default -- add entries once you know your app's callback/logout URLs."
   type = map(object({

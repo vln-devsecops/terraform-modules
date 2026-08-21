@@ -160,6 +160,8 @@ token with `read:packages` for the `@vln-devsecops` scope.
 | `allow_self_signup` | Whether users can sign themselves up (pool-wide). Default `true`. | `bool` |
 | `mfa_configuration` | `OFF`, `OPTIONAL`, or `ON`. Default `"OFF"`. | `string` |
 | `password_policy` | Password policy overrides. Defaults match doxchange's proven config. | `object(...)` |
+| `advanced_security_mode` | Cognito threat protection: `AUDIT`, `ENFORCED`, or `OFF`. Default `"OFF"` -- AUDIT/ENFORCED require a paid Cognito feature plan (billed per MAU, same rate either mode). See `doc/auth-api-rate-limiting.md`. | `string` |
+| `auth_api_throttling` | Per-route throttle limits (`burst_limit`, a request count; `rate_limit`, requests/second) applied to the public `/auth/*` routes. Defaults `burst_limit=10`, `rate_limit=5` -- no extra AWS cost. See `doc/auth-api-rate-limiting.md`. | `object(...)` |
 | `clients` | Consumer app clients to create, keyed by logical name. Empty by default. | `map(object(...))` |
 | `groups` | Optional Cognito groups (coarse, cosmetic relative to the DynamoDB privilege system). | `map(object(...))` |
 | `baseline_groups` | Group names every newly-confirmed user is added to. | `list(string)` |

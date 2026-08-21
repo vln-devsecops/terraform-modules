@@ -48,6 +48,14 @@ resource "aws_cognito_user_pool" "this" {
 
   mfa_configuration = var.mfa_configuration
 
+  # Threat protection (compromised-credential checks, adaptive auth). Defaults
+  # to OFF -- AUDIT/ENFORCED require the Plus feature plan (or a paid Lite-tier
+  # add-on) and are billed per MAU regardless of mode -- see
+  # doc/auth-api-rate-limiting.md.
+  user_pool_add_ons {
+    advanced_security_mode = var.advanced_security_mode
+  }
+
   password_policy {
     minimum_length                   = var.password_policy.minimum_length
     require_lowercase                = var.password_policy.require_lowercase
@@ -1049,41 +1057,59 @@ locals {
   # Public routes (no JWT authorizer -- this is how a token is obtained). The
   # CloudFront /api/v1/auth* behavior strips the /api/v1 prefix, so the API
   # Gateway sees /auth/*.
+  # throttling_burst_limit/rate_limit below are an aggregate, account-wide cap
+  # shared across all callers of a route (not per-source-IP) -- see
+  # doc/auth-api-rate-limiting.md for what this does and doesn't defend
+  # against, and why waf_web_acl_arn is still recommended alongside it.
   auth_api_routes = var.create_admin_panel ? {
     identify = {
-      route_key            = "POST /auth/identify"
-      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
-      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+      route_key              = "POST /auth/identify"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
     }
     password = {
-      route_key            = "POST /auth/password"
-      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
-      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+      route_key              = "POST /auth/password"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
     }
     signup = {
-      route_key            = "POST /auth/signup"
-      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
-      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+      route_key              = "POST /auth/signup"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
     }
     confirm = {
-      route_key            = "POST /auth/confirm"
-      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
-      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+      route_key              = "POST /auth/confirm"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
     }
     resend = {
-      route_key            = "POST /auth/resend"
-      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
-      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+      route_key              = "POST /auth/resend"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
     }
     forgot = {
-      route_key            = "POST /auth/forgot"
-      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
-      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+      route_key              = "POST /auth/forgot"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
     }
     reset = {
-      route_key            = "POST /auth/reset"
-      lambda_function_arn  = one(aws_lambda_function.auth_api[*].arn)
-      lambda_function_name = one(aws_lambda_function.auth_api[*].function_name)
+      route_key              = "POST /auth/reset"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
     }
   } : {}
 }
