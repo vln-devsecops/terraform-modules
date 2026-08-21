@@ -146,6 +146,29 @@ Because the SPA is installed and synced at apply time, the apply host needs
 Node + npm (already required for the Lambda) and the AWS CLI, plus a GitHub
 token with `read:packages` for the `@vln-devsecops` scope.
 
+## Security defaults
+
+`allow_self_signup` defaults to `true` and `mfa_configuration` defaults to
+`"OFF"` — an open, low-friction signup flow rather than a locked-down one.
+That's a deliberate default for this module's primary use case (a new
+product standing up its own auth from scratch), not a recommendation for
+every deployment:
+
+- `allow_self_signup = true` matches a normal SaaS signup flow. Set it to
+  `false` for invite-only products, where `admin_create_user_config` (via
+  the admin panel's own privilege checks, not the client used to
+  authenticate — see below) becomes the only way to create users.
+- `mfa_configuration = "OFF"` avoids adding enrollment friction to every
+  consuming app by default, since not all of them carry data sensitive
+  enough to warrant it. Set it to `"OPTIONAL"` or `"ON"` per environment
+  (typically `prod`) once an app's risk profile calls for it — this is a
+  pool-wide setting, so it can't be scoped to a subset of users.
+
+Both are per-deployment `module` block overrides, so a stricter posture for
+one app doesn't have to affect another. `advanced_security_mode` (see
+`doc/auth-api-rate-limiting.md`) and `password_policy` are the other two
+security-relevant knobs worth reviewing before a production launch.
+
 ## Inputs
 
 | Name | Description | Type |
