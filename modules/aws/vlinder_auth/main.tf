@@ -28,6 +28,8 @@ locals {
 resource "aws_cognito_user_pool" "this" {
   name = "${var.app_name}-${var.deployment_environment}-user-pool"
 
+  deletion_protection = var.user_pool_deletion_protection
+
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"
@@ -422,10 +424,11 @@ resource "aws_dynamodb_table_item" "tenants" {
 module "user_role_assignments" {
   source = "../dynamodb"
 
-  app_name                = var.app_name
-  deployment_environment  = var.deployment_environment
-  function                = "auth-role-assignments"
-  short_deployment_region = local.short_region
+  app_name                    = var.app_name
+  deployment_environment      = var.deployment_environment
+  function                    = "auth-role-assignments"
+  short_deployment_region     = local.short_region
+  deletion_protection_enabled = var.role_assignments_deletion_protection_enabled
 
   # A user may hold several roles per tenant, so each (user, tenant, role) grant
   # is its own row. The range key is the composite "<tenantId>#<roleId>"

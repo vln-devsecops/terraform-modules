@@ -108,6 +108,8 @@ resource "aws_dynamodb_table" "this" {
     kms_key_arn = local.kms_key_arn
   }
 
+  deletion_protection_enabled = var.deletion_protection_enabled
+
   tags = {
     app         = var.app_name
     environment = var.deployment_environment

@@ -78,6 +78,11 @@ module "vlinder_auth" {
   # tracks -- without this, terraform destroy fails with BucketNotEmpty on
   # every run that gets that far.
   auth_site_force_destroy = true
+
+  # This suite applies then destroys on every run; deletion protection on the
+  # user pool or the role-assignments table would block that destroy.
+  user_pool_deletion_protection                = "INACTIVE"
+  role_assignments_deletion_protection_enabled = false
 }
 
 output "user_pool_id" {
