@@ -54,6 +54,23 @@ variable "auth_site_force_destroy" {
   default     = false
 }
 
+variable "user_pool_deletion_protection" {
+  description = "Cognito user pool deletion protection. \"ACTIVE\" by default -- the pool holds every user credential for a deployment, and a bad plan (e.g. a rename that forces replacement) shouldn't be able to destroy every account. Set to \"INACTIVE\" for ephemeral test suites and other roots that are torn down as a matter of course."
+  type        = string
+  default     = "ACTIVE"
+
+  validation {
+    condition     = contains(["ACTIVE", "INACTIVE"], var.user_pool_deletion_protection)
+    error_message = "user_pool_deletion_protection must be ACTIVE or INACTIVE."
+  }
+}
+
+variable "role_assignments_deletion_protection_enabled" {
+  description = "Whether to enable DynamoDB deletion protection on the user_role_assignments table (who has which role in which tenant). True by default -- unlike the roles/tenants catalog tables, this data isn't reproducible from Terraform config. Set false for ephemeral test suites and other roots that are torn down as a matter of course."
+  type        = bool
+  default     = true
+}
+
 # --- Identity (optional; sane defaults) ------------------------------------
 
 variable "domain_prefix" {
