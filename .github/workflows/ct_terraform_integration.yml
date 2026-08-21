@@ -25,7 +25,7 @@ jobs:
       CHECKOV_SKIP_CHECKS: "CKV_AWS_70"
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -70,7 +70,7 @@ jobs:
       suite_count: ${{ steps.discover.outputs.suite_count }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Discover integration suites
         id: discover
@@ -139,7 +139,7 @@ jobs:
         suite: ${{ fromJson(needs.discover.outputs.suites) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
