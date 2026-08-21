@@ -8,6 +8,8 @@ Documentation should normally use the moving two-level tag form such as `v0.3`; 
 
 Version tags should only be created or moved after the relevant pipelines have been confirmed to pass on the tagged commit.
 
+Releases are cut by [release-please](https://github.com/googleapis/release-please) from conventional-commit history on `main`: merging its release PR creates the immutable `vX.Y.Z` tag and force-moves the floating `vX` / `vX.Y` tags to it, in addition to the existing `latest` tag.
+
 ## Layout
 
 - `modules/aws/*`: AWS-specific shared modules
