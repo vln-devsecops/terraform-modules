@@ -23,7 +23,7 @@ variable "cors_configuration" {
 }
 
 variable "routes" {
-  description = "Map of routes to create. Each key is a logical route identifier."
+  description = "Map of routes to create. Each key is a logical route identifier. Each route may optionally set throttling_burst_limit (token-bucket capacity: how many requests can land instantaneously, a count) and throttling_rate_limit (steady-state limit in requests per second) to throttle that route; null (the default) leaves it unthrottled beyond the account-level default."
   type = map(object({
     route_key              = string
     lambda_function_arn    = string
@@ -31,6 +31,8 @@ variable "routes" {
     payload_format_version = optional(string, "2.0")
     authorizer_key         = optional(string, null)
     timeout_milliseconds   = optional(number, 29000)
+    throttling_burst_limit = optional(number, null) # token-bucket capacity (request count, not a rate); null = no override
+    throttling_rate_limit  = optional(number, null) # steady-state refill rate, in requests/second; null = no override
   }))
   default = {}
 }

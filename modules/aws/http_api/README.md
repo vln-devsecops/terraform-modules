@@ -11,7 +11,7 @@ Routes are declared as a map; each route creates an integration, a route resourc
 | `name` | Name of the HTTP API. | `string` |
 | `description` | Description of the HTTP API. | `string` |
 | `cors_configuration` | CORS configuration for the API. | `object(...)` |
-| `routes` | Map of routes to create. Each key is a logical route identifier. | `map(object(...))` |
+| `routes` | Map of routes to create. Each key is a logical route identifier. Each route may optionally set `throttling_burst_limit` (token-bucket capacity, a request count) and `throttling_rate_limit` (steady-state limit in requests/second) to throttle that route. | `map(object(...))` |
 | `jwt_authorizers` | Map of JWT authorizers. Key is referenced by routes via `authorizer_key`. | `map(object(...))` |
 | `stage_name` | API Gateway stage name. | `string` |
 | `auto_deploy` | Whether to auto-deploy changes to the stage. | `bool` |

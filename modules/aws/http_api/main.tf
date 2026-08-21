@@ -65,6 +65,15 @@ resource "aws_apigatewayv2_stage" "this" {
     }
   }
 
+  dynamic "route_settings" {
+    for_each = { for k, v in var.routes : k => v if v.throttling_burst_limit != null || v.throttling_rate_limit != null }
+    content {
+      route_key              = route_settings.value.route_key
+      throttling_burst_limit = route_settings.value.throttling_burst_limit
+      throttling_rate_limit  = route_settings.value.throttling_rate_limit
+    }
+  }
+
   tags = var.tags
 }
 
