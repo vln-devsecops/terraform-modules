@@ -32,6 +32,12 @@ variable "routes" {
     `authorizer_key` may only be set for JWT routes. `CUSTOM` routes are wired
     to the single Lambda authorizer configured via `lambda_authorizer` (which
     must be set); see [Route authorization](#route-authorization).
+
+    Each route may also optionally set throttling_burst_limit (token-bucket
+    capacity: how many requests can land instantaneously, a count) and
+    throttling_rate_limit (steady-state limit in requests per second) to
+    throttle that route; null (the default) leaves it unthrottled beyond the
+    account-level default.
   EOT
   type = map(object({
     route_key              = string
@@ -41,6 +47,8 @@ variable "routes" {
     authorizer_key         = optional(string, null)
     authorization_type     = optional(string, null)
     timeout_milliseconds   = optional(number, 29000)
+    throttling_burst_limit = optional(number, null) # token-bucket capacity (request count, not a rate); null = no override
+    throttling_rate_limit  = optional(number, null) # steady-state refill rate, in requests/second; null = no override
   }))
   default = {}
 

@@ -269,7 +269,7 @@ run "session_signing_key_is_provisioned_via_secrets_manager_not_a_terraform_gene
   }
 
   assert {
-    condition = one(aws_lambda_function.auth_api[*].environment[0].variables["SESSION_SIGNING_KEY_SECRET_ID"]) == one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
+    condition     = one(aws_lambda_function.auth_api[*].environment[0].variables["SESSION_SIGNING_KEY_SECRET_ID"]) == one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
     error_message = "The auth API Lambda should receive the secret's ARN, not a plaintext signing key, via SESSION_SIGNING_KEY_SECRET_ID."
   }
 

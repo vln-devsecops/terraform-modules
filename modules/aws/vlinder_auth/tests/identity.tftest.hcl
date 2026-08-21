@@ -97,6 +97,11 @@ run "defaults_match_doxchange_derived_contract" {
   }
 
   assert {
+    condition     = one(aws_cognito_user_pool.this.user_pool_add_ons).advanced_security_mode == "OFF"
+    error_message = "advanced_security_mode should default to OFF (AUDIT/ENFORCED require a paid Cognito feature plan -- see doc/auth-api-rate-limiting.md)."
+  }
+
+  assert {
     condition     = one(aws_cognito_user_pool.this.admin_create_user_config).allow_admin_create_user_only == false
     error_message = "allow_self_signup defaulting to true should permit public signup."
   }
@@ -216,6 +221,19 @@ run "groups_are_created_from_the_groups_map" {
   assert {
     condition     = aws_cognito_user_group.this["staff"].precedence == 5
     error_message = "Group precedence should be passed through."
+  }
+}
+
+run "advanced_security_mode_override_is_plumbed_through" {
+  command = plan
+
+  variables {
+    advanced_security_mode = "AUDIT"
+  }
+
+  assert {
+    condition     = one(aws_cognito_user_pool.this.user_pool_add_ons).advanced_security_mode == "AUDIT"
+    error_message = "advanced_security_mode override should be passed through to user_pool_add_ons."
   }
 }
 
