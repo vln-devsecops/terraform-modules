@@ -1,0 +1,9 @@
+{
+  "name": "@vln-devsecops/http-api-authorizer-lambda-build",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build manifest for http_api_authorizer module's Lambda function. Terraform installs this at apply time via null_resource.lambda_package; Dependabot bumps the version here when a new release is published to GitHub Packages.",
+  "dependencies": {
+    "@vln-devsecops/http-api-authorizer-lambda": "^1.0.0"
+  }
+}
