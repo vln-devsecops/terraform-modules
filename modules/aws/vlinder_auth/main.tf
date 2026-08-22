@@ -20,7 +20,18 @@ locals {
     default = { name = "Default", email_domain = null }
   }
 
-  auth_site_bucket_name = "${var.app_name}-${var.deployment_environment}-auth-site"
+  auth_site_bucket_name = "${var.app_name}-${var.deployment_environment}-auth-site-${random_string.auth_site_bucket_suffix.result}"
+}
+
+# S3 bucket names are globally unique across all AWS accounts, so a fully
+# deterministic <app>-<env>-auth-site name is guessable/claimable by anyone
+# ahead of first deploy. This suffix is generated once and persisted in state.
+resource "random_string" "auth_site_bucket_suffix" {
+  length  = 8
+  lower   = true
+  upper   = false
+  numeric = true
+  special = false
 }
 
 # --- Identity ---------------------------------------------------------------
