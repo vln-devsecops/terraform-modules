@@ -92,6 +92,15 @@ updates:
       - dependencies
       - terraform
   - package-ecosystem: terraform
+    directory: /modules/aws/http_api_authorizer
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - terraform
+  - package-ecosystem: terraform
     directory: /modules/aws/lambda
     target-branch: main
     schedule:
@@ -164,6 +173,15 @@ updates:
       - dependencies
       - terraform
   - package-ecosystem: terraform
+    directory: /examples/aws/http_api_authorizer
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - terraform
+  - package-ecosystem: terraform
     directory: /examples/aws/lambda
     target-branch: main
     schedule:
@@ -210,6 +228,15 @@ updates:
       - github-actions
   - package-ecosystem: npm
     directory: /modules/aws/contact_form/lambda-build
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - npm
+  - package-ecosystem: npm
+    directory: /modules/aws/http_api_authorizer/lambda-build
     target-branch: main
     schedule:
       interval: weekly
