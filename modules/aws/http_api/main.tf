@@ -51,6 +51,29 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
   }
 }
 
+resource "aws_apigatewayv2_authorizer" "lambda" {
+  count = var.lambda_authorizer != null ? 1 : 0
+
+  api_id                            = aws_apigatewayv2_api.this.id
+  authorizer_type                   = "REQUEST"
+  name                              = "${var.name}-lambda-authorizer"
+  authorizer_uri                    = var.lambda_authorizer.authorizer_uri
+  authorizer_payload_format_version = "2.0"
+  enable_simple_responses           = true
+  identity_sources                  = var.lambda_authorizer.identity_sources
+  authorizer_result_ttl_in_seconds  = var.lambda_authorizer.result_ttl_in_seconds
+}
+
+resource "aws_lambda_permission" "authorizer_invoke" {
+  count = var.lambda_authorizer != null ? 1 : 0
+
+  statement_id  = "AllowAPIGatewayInvokeAuthorizer"
+  action        = "lambda:InvokeFunction"
+  function_name = var.lambda_authorizer.authorizer_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.this.execution_arn}/authorizers/${aws_apigatewayv2_authorizer.lambda[0].id}"
+}
+
 resource "aws_cloudwatch_log_group" "access_logs" {
   count = var.create_access_log_group ? 1 : 0
 
@@ -93,7 +116,11 @@ resource "aws_apigatewayv2_route" "this" {
   target    = "integrations/${aws_apigatewayv2_integration.this[each.key].id}"
 
   authorization_type = local.route_authorization_types[each.key]
-  authorizer_id      = try(local.route_authorizer_ids[each.key], null)
+  authorizer_id = (
+    local.route_authorization_types[each.key] == "CUSTOM"
+    ? try(aws_apigatewayv2_authorizer.lambda[0].id, null)
+    : try(local.route_authorizer_ids[each.key], null)
+  )
 }
 
 resource "aws_lambda_permission" "this" {

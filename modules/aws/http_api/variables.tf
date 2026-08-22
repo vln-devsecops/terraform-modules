@@ -27,9 +27,11 @@ variable "routes" {
     Map of routes to create. Each key is a logical route identifier.
 
     `authorization_type` selects how the route is authorized and accepts `NONE`,
-    `AWS_IAM`, or `JWT`. When left null it is derived from `authorizer_key`:
-    `JWT` when an authorizer is referenced, `NONE` otherwise. `authorizer_key`
-    may only be set for JWT routes.
+    `AWS_IAM`, `JWT`, or `CUSTOM`. When left null it is derived from
+    `authorizer_key`: `JWT` when an authorizer is referenced, `NONE` otherwise.
+    `authorizer_key` may only be set for JWT routes. `CUSTOM` routes are wired
+    to the single Lambda authorizer configured via `lambda_authorizer` (which
+    must be set); see [Route authorization](#route-authorization).
   EOT
   type = map(object({
     route_key              = string
@@ -44,10 +46,10 @@ variable "routes" {
 
   validation {
     condition = alltrue([
-      for route in var.routes : contains(["NONE", "AWS_IAM", "JWT"], route.authorization_type)
+      for route in var.routes : contains(["NONE", "AWS_IAM", "JWT", "CUSTOM"], route.authorization_type)
       if route.authorization_type != null
     ])
-    error_message = "Each route's authorization_type must be one of NONE, AWS_IAM, or JWT."
+    error_message = "Each route's authorization_type must be one of NONE, AWS_IAM, JWT, or CUSTOM."
   }
 
   validation {
@@ -75,6 +77,30 @@ variable "jwt_authorizers" {
     identity_sources = optional(list(string), ["$request.header.Authorization"])
   }))
   default = {}
+}
+
+variable "lambda_authorizer" {
+  description = <<-EOT
+    Optional Lambda REQUEST authorizer, invoked by every route whose effective
+    authorization_type resolves to CUSTOM. Unlike jwt_authorizers, this is a
+    single object (not a map) since an API only ever needs one Lambda
+    authorizer -- the authorizer Lambda itself decides what to check.
+
+    `modules/aws/http_api_authorizer` provides a ready-made authorizer
+    (verifies a shared origin-verify header, optionally also a JWT) that can
+    be wired in here via its authorizer_uri/authorizer_function_name outputs,
+    but any Lambda REQUEST authorizer works.
+
+    Leaving this null (the default) leaves existing behavior unchanged -- no
+    CUSTOM authorizer resources are created.
+  EOT
+  type = object({
+    authorizer_uri           = string
+    authorizer_function_name = string
+    identity_sources         = optional(list(string), ["$request.header.Authorization"])
+    result_ttl_in_seconds    = optional(number, 0)
+  })
+  default = null
 }
 
 variable "stage_name" {

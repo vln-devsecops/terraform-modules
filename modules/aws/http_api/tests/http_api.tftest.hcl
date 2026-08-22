@@ -254,6 +254,87 @@ run "iam_authorization_is_applied_per_route" {
   }
 }
 
+run "lambda_authorizer_unset_creates_no_custom_authorizer_resources" {
+  command = plan
+
+  variables {
+    name = "no-lambda-authorizer-api"
+    routes = {
+      public_route = {
+        route_key            = "GET /public"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:public-fn"
+        lambda_function_name = "public-fn"
+      }
+    }
+  }
+
+  assert {
+    condition     = length(aws_apigatewayv2_authorizer.lambda) == 0
+    error_message = "No Lambda authorizer should be created when lambda_authorizer is unset."
+  }
+
+  assert {
+    condition     = length(aws_lambda_permission.authorizer_invoke) == 0
+    error_message = "No authorizer invoke permission should be created when lambda_authorizer is unset."
+  }
+}
+
+run "custom_authorization_is_wired_to_lambda_authorizer" {
+  command = plan
+
+  variables {
+    name = "custom-auth-api"
+    lambda_authorizer = {
+      authorizer_uri           = "arn:aws:apigateway:eu-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-west-1:123456789012:function:authorizer/invocations"
+      authorizer_function_name = "authorizer"
+      identity_sources         = ["$request.header.X-Origin-Verify"]
+    }
+    routes = {
+      guarded_route = {
+        route_key            = "POST /guarded"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:guarded-fn"
+        lambda_function_name = "guarded-fn"
+        authorization_type   = "CUSTOM"
+      }
+    }
+  }
+
+  assert {
+    condition     = length(aws_apigatewayv2_authorizer.lambda) == 1
+    error_message = "Expected exactly one Lambda authorizer when lambda_authorizer is set."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_authorizer.lambda[0].authorizer_type == "REQUEST"
+    error_message = "Lambda authorizer type must be REQUEST."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_authorizer.lambda[0].enable_simple_responses == true
+    error_message = "Lambda authorizer must use simple responses."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.this["guarded_route"].authorization_type == "CUSTOM"
+    error_message = "Guarded route must have authorization_type CUSTOM."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.this["guarded_route"].authorizer_id == aws_apigatewayv2_authorizer.lambda[0].id
+    error_message = "CUSTOM route must be wired to the Lambda authorizer."
+  }
+
+  assert {
+    condition     = length(aws_lambda_permission.authorizer_invoke) == 1
+    error_message = "Expected exactly one authorizer invoke permission."
+  }
+
+  assert {
+    condition     = aws_lambda_permission.authorizer_invoke[0].function_name == "authorizer"
+    error_message = "Authorizer invoke permission must target the configured authorizer function."
+  }
+}
+
 run "explicit_authorization_types_match_derived_defaults" {
   command = plan
 

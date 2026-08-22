@@ -1,8 +1,8 @@
 # aws/http_api
 
-Creates an AWS API Gateway HTTP API (v2) with Lambda proxy integrations, optional JWT authorizers, optional IAM (SigV4) authorization, optional CloudWatch access logging, and optional custom domain with Route 53 alias.
+Creates an AWS API Gateway HTTP API (v2) with Lambda proxy integrations, optional JWT authorizers, optional Lambda (REQUEST) authorizer, optional IAM (SigV4) authorization, optional CloudWatch access logging, and optional custom domain with Route 53 alias.
 
-Routes are declared as a map; each route creates an integration, a route resource, and a Lambda permission. JWT authorizers are declared separately and referenced by key from individual routes.
+Routes are declared as a map; each route creates an integration, a route resource, and a Lambda permission. JWT authorizers are declared separately and referenced by key from individual routes; the Lambda authorizer (if any) is a single, API-wide object referenced via `authorization_type = "CUSTOM"`.
 
 ## Route authorization
 
@@ -14,6 +14,7 @@ Each route is authorized independently through the optional `authorization_type`
 | `NONE` | Public route. `authorizer_key` must not be set. |
 | `AWS_IAM` | Caller must present SigV4-signed requests; access is granted by IAM policy on the `execute-api:Invoke` action. `authorizer_key` must not be set. |
 | `JWT` | Validated by the referenced JWT authorizer; `authorizer_key` is required. |
+| `CUSTOM` | Validated by the Lambda REQUEST authorizer configured via `lambda_authorizer` (which must be set). |
 
 This lets a single API mix a public route with an owner-only IAM-signed route:
 
@@ -35,6 +36,29 @@ routes = {
 
 Note the value is `AWS_IAM`, matching the API Gateway v2 route attribute, not `IAM`.
 
+### Lambda authorizer (`CUSTOM`)
+
+`lambda_authorizer` wires a single Lambda REQUEST authorizer to the API; any route with `authorization_type = "CUSTOM"` invokes it (`enable_simple_responses = true`, payload format 2.0). Unlike `jwt_authorizers`, there's only ever one -- the authorizer Lambda itself decides what to check.
+
+```hcl
+lambda_authorizer = {
+  authorizer_uri            = module.authorizer.authorizer_uri
+  authorizer_function_name  = module.authorizer.authorizer_function_name
+  identity_sources          = ["$request.header.X-Origin-Verify"]
+}
+
+routes = {
+  guarded = {
+    route_key            = "GET /guarded"
+    lambda_function_arn  = aws_lambda_function.guarded.arn
+    lambda_function_name = aws_lambda_function.guarded.function_name
+    authorization_type   = "CUSTOM"
+  }
+}
+```
+
+`modules/aws/http_api_authorizer` provides a ready-made authorizer (a shared origin-verify header, optionally also JWT verification) whose outputs plug directly into `authorizer_uri`/`authorizer_function_name` above -- see that module's README. Any other Lambda REQUEST authorizer works too.
+
 ## Inputs
 
 | Name | Description | Type |
@@ -44,6 +68,7 @@ Note the value is `AWS_IAM`, matching the API Gateway v2 route attribute, not `I
 | `cors_configuration` | CORS configuration for the API. | `object(...)` |
 | `routes` | Map of routes to create. Each key is a logical route identifier; see [Route authorization](#route-authorization). | `map(object(...))` |
 | `jwt_authorizers` | Map of JWT authorizers. Key is referenced by routes via `authorizer_key`. | `map(object(...))` |
+| `lambda_authorizer` | Single Lambda REQUEST authorizer; see [Lambda authorizer](#lambda-authorizer-custom). | `object(...)` |
 | `stage_name` | API Gateway stage name. | `string` |
 | `auto_deploy` | Whether to auto-deploy changes to the stage. | `bool` |
 | `create_access_log_group` | Whether to create a CloudWatch log group for access logs. | `bool` |
