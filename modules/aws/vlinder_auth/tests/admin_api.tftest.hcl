@@ -70,6 +70,12 @@ mock_provider "aws" {
       execution_arn = "arn:aws:execute-api:us-east-1:123456789012:apiplaceholder"
     }
   }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:us-east-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+    }
+  }
 }
 
 mock_provider "archive" {
@@ -91,7 +97,7 @@ variables {
   acm_certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/example"
 }
 
-run "admin_api_is_provisioned_via_the_shared_http_api_module_with_a_jwt_authorizer_on_this_pool" {
+run "admin_api_is_provisioned_via_the_shared_http_api_module_with_a_lambda_authorizer_that_also_verifies_jwts" {
   command = plan
 
   assert {
@@ -99,14 +105,29 @@ run "admin_api_is_provisioned_via_the_shared_http_api_module_with_a_jwt_authoriz
     error_message = "The admin API should be provisioned via the shared http_api module when create_admin_panel is true (the default)."
   }
 
-  # http_api is a separate module with its own test suite that verifies
-  # jwt_authorizers.issuer_url actually lands in the authorizer resource;
-  # module encapsulation means only outputs are visible from here, so this
-  # checks the value vlinder_auth itself computes and hands across that
-  # boundary, not http_api's internals.
+  assert {
+    condition     = length(module.admin_api_authorizer) == 1
+    error_message = "The admin API should get its own http_api_authorizer instance, require_jwt = true, when create_admin_panel is true."
+  }
+
+  # http_api and http_api_authorizer are separate modules with their own test
+  # suites verifying jwt_issuer_url actually lands in the authorizer Lambda's
+  # env vars; module encapsulation means only outputs are visible from here,
+  # so this checks the value vlinder_auth itself computes and hands across
+  # that boundary, not either module's internals.
   assert {
     condition     = strcontains(local.admin_api_issuer_url, "us-east-1_exampleId")
-    error_message = "The admin API's JWT authorizer issuer should be derived from this module's own user pool."
+    error_message = "The admin API authorizer's JWT issuer should be derived from this module's own user pool."
+  }
+
+  # Every admin route must go through the Lambda authorizer (origin-verify +
+  # JWT), not the old per-route JWT authorizer_key mechanism -- see
+  # doc/../http_api's CUSTOM authorization_type.
+  assert {
+    condition = alltrue([
+      for route in local.admin_api_routes : route.authorization_type == "CUSTOM"
+    ])
+    error_message = "Every admin API route must have authorization_type CUSTOM, wired to the shared Lambda authorizer."
   }
 }
 

@@ -824,39 +824,55 @@ locals {
       route_key            = "GET /users"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "vlinder_auth"
+      authorization_type   = "CUSTOM"
     }
     get_user = {
       route_key            = "GET /users/{userId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "vlinder_auth"
+      authorization_type   = "CUSTOM"
     }
     set_user_enabled = {
       route_key            = "PATCH /users/{userId}/enabled"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "vlinder_auth"
+      authorization_type   = "CUSTOM"
     }
     list_roles = {
       route_key            = "GET /roles"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "vlinder_auth"
+      authorization_type   = "CUSTOM"
     }
     assign_role = {
       route_key            = "PUT /users/{userId}/roles/{roleId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "vlinder_auth"
+      authorization_type   = "CUSTOM"
     }
     revoke_role = {
       route_key            = "DELETE /users/{userId}/roles/{roleId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
-      authorizer_key       = "vlinder_auth"
+      authorization_type   = "CUSTOM"
     }
   } : {}
+}
+
+module "admin_api_authorizer" {
+  count  = var.create_admin_panel ? 1 : 0
+  source = "../http_api_authorizer"
+
+  name        = "${var.app_name}-${var.deployment_environment}-admin-api"
+  require_jwt = true
+
+  jwt_issuer_url     = local.admin_api_issuer_url
+  jwt_audience       = one(aws_cognito_user_pool_client.auth_site[*].id)
+  jwt_forward_claims = ["tenantId", "permissions", "scope"]
+
+  kms_key_arn = aws_kms_key.this.arn
+
+  tags = local.common_tags
 }
 
 module "admin_api" {
@@ -865,11 +881,10 @@ module "admin_api" {
 
   name = "${var.app_name}-${var.deployment_environment}-admin-api"
 
-  jwt_authorizers = {
-    vlinder_auth = {
-      issuer_url = local.admin_api_issuer_url
-      audience   = aws_cognito_user_pool_client.auth_site[*].id
-    }
+  lambda_authorizer = {
+    authorizer_uri           = one(module.admin_api_authorizer[*].authorizer_uri)
+    authorizer_function_name = one(module.admin_api_authorizer[*].authorizer_function_name)
+    identity_sources         = ["$request.header.X-Origin-Verify", "$request.header.Authorization"]
   }
 
   routes = local.admin_api_routes
@@ -1071,6 +1086,7 @@ locals {
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
       throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
     }
     password = {
       route_key              = "POST /auth/password"
@@ -1078,6 +1094,7 @@ locals {
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
       throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
     }
     signup = {
       route_key              = "POST /auth/signup"
@@ -1085,6 +1102,7 @@ locals {
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
       throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
     }
     confirm = {
       route_key              = "POST /auth/confirm"
@@ -1092,6 +1110,7 @@ locals {
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
       throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
     }
     resend = {
       route_key              = "POST /auth/resend"
@@ -1099,6 +1118,7 @@ locals {
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
       throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
     }
     forgot = {
       route_key              = "POST /auth/forgot"
@@ -1106,6 +1126,7 @@ locals {
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
       throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
     }
     reset = {
       route_key              = "POST /auth/reset"
@@ -1113,8 +1134,20 @@ locals {
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
       throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
     }
   } : {}
+}
+
+module "auth_api_authorizer" {
+  count  = var.create_admin_panel ? 1 : 0
+  source = "../http_api_authorizer"
+
+  name = "${var.app_name}-${var.deployment_environment}-auth-api"
+
+  kms_key_arn = aws_kms_key.this.arn
+
+  tags = local.common_tags
 }
 
 module "auth_api" {
@@ -1122,6 +1155,12 @@ module "auth_api" {
   source = "../http_api"
 
   name = "${var.app_name}-${var.deployment_environment}-auth-api"
+
+  lambda_authorizer = {
+    authorizer_uri           = one(module.auth_api_authorizer[*].authorizer_uri)
+    authorizer_function_name = one(module.auth_api_authorizer[*].authorizer_function_name)
+    identity_sources         = ["$request.header.X-Origin-Verify"]
+  }
 
   routes = local.auth_api_routes
 
@@ -1392,12 +1431,27 @@ resource "aws_cloudfront_distribution" "auth_site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.auth_site.id
   }
 
-  # Admin API origin: the admin SPA calls this same-origin via /api/v1
+  # Admin API origin: the admin SPA calls this same-origin via /api/v1.
+  # custom_header injects the admin authorizer's shared secret on every
+  # origin request -- the admin_api_rewrite CloudFront Function strips any
+  # client-supplied copy of the same header first, so this is the only
+  # possible source of a valid X-Origin-Verify by the time the request
+  # leaves CloudFront. The admin_api_authorizer Lambda authorizer rejects
+  # anything else, closing off direct execute-api access that would
+  # otherwise bypass CloudFront (and any WAF attached to this distribution).
   dynamic "origin" {
-    for_each = var.create_admin_panel ? [one(module.admin_api[*].invoke_url)] : []
+    for_each = var.create_admin_panel ? [{
+      invoke_url = one(module.admin_api[*].invoke_url)
+      secret     = one(module.admin_api_authorizer[*].origin_verify_secret)
+    }] : []
     content {
-      domain_name = regex("https://([^/]+)", origin.value)[0]
+      domain_name = regex("https://([^/]+)", origin.value.invoke_url)[0]
       origin_id   = "AdminApi"
+
+      custom_header {
+        name  = "X-Origin-Verify"
+        value = origin.value.secret
+      }
 
       custom_origin_config {
         http_port              = 80
@@ -1408,12 +1462,23 @@ resource "aws_cloudfront_distribution" "auth_site" {
     }
   }
 
-  # Auth API origin: the login SPA calls this same-origin via /api/v1/auth
+  # Auth API origin: the login SPA calls this same-origin via /api/v1/auth.
+  # Same origin-verify header pattern as AdminApi above, via the separate
+  # auth_api_authorizer instance (origin-check only, no JWT -- these routes
+  # are intentionally public).
   dynamic "origin" {
-    for_each = var.create_admin_panel ? [one(module.auth_api[*].invoke_url)] : []
+    for_each = var.create_admin_panel ? [{
+      invoke_url = one(module.auth_api[*].invoke_url)
+      secret     = one(module.auth_api_authorizer[*].origin_verify_secret)
+    }] : []
     content {
-      domain_name = regex("https://([^/]+)", origin.value)[0]
+      domain_name = regex("https://([^/]+)", origin.value.invoke_url)[0]
       origin_id   = "AuthApi"
+
+      custom_header {
+        name  = "X-Origin-Verify"
+        value = origin.value.secret
+      }
 
       custom_origin_config {
         http_port              = 80

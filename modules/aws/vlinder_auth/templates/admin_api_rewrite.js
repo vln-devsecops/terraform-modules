@@ -31,6 +31,15 @@
 // authenticate as a different principal than its own session by sending one.
 function handler(event) {
   var request = event.request;
+
+  // CloudFront's own origin custom_header (added later, at origin-request
+  // time) overwrites a same-named viewer header before forwarding to
+  // origin -- but drop any client-supplied copy here too, at the edge,
+  // rather than relying solely on that. The admin API's Lambda authorizer
+  // rejects any request without the correct value, so this is what closes
+  // off direct execute-api access bypassing CloudFront.
+  delete request.headers['x-origin-verify'];
+
   request.uri = request.uri.replace(/^\/api\/v1/, '') || '/';
 
   var cookies = request.cookies || {};
