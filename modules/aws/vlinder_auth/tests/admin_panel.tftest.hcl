@@ -103,6 +103,14 @@ mock_provider "archive" {
   }
 }
 
+mock_provider "random" {
+  mock_resource "random_string" {
+    defaults = {
+      result = "abc12345"
+    }
+  }
+}
+
 variables {
   app_name               = "myapp"
   deployment_environment = "prod"
@@ -124,8 +132,8 @@ run "auth_site_is_served_from_a_dedicated_cloudfront_distribution" {
   }
 
   assert {
-    condition     = aws_s3_bucket.auth_site.bucket == "myapp-prod-auth-site"
-    error_message = "The auth site S3 bucket should be named <app_name>-<environment>-auth-site."
+    condition     = startswith(aws_s3_bucket.auth_site.bucket, "myapp-prod-auth-site-")
+    error_message = "The auth site S3 bucket should be named <app_name>-<environment>-auth-site-<random suffix>."
   }
 }
 
