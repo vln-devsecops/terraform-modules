@@ -3,8 +3,11 @@
 A self-provisioning Cognito auth component: a consumer supplies an app id and
 the unavoidable AWS plumbing (an existing Route 53 zone and a us-east-1 ACM
 certificate — no module in this repo can conjure those) and gets back a
-working Cognito-backed signup/login flow, RBAC, and a hosted admin panel. No
-Lambda ARNs, no DynamoDB tables, and no second API to wire by hand.
+working Cognito-backed signup/login flow, RBAC, and, by default, a hosted
+admin panel. No Lambda ARNs, no DynamoDB tables, and no second API to wire by
+hand. `auth_profile` scales this down to just the login backend or just
+identity + RBAC for adopters bringing their own frontend — see Auth profiles
+below.
 
 ```hcl
 module "auth" {
@@ -106,18 +109,38 @@ module "auth" {
 }
 ```
 
+## Auth profiles
+
+`auth_profile` picks which optional layers this module provisions, from most
+to least. Each profile is a strict subset of the one above it:
+
+| `auth_profile` | Identity + RBAC | Public auth API (login/session backend) | Admin API + panel | Auth-site CloudFront/S3/SPA shell |
+| --- | :---: | :---: | :---: | :---: |
+| `"full"` (default) | yes | yes | yes | yes — serves both `/` and `/admin` |
+| `"auth_api"` | yes | yes | no | yes — serves `/` only; bring your own admin UI against the RBAC table and Cognito Admin APIs |
+| `"identity_only"` | yes | no | no | no — bring your own everything |
+
+Identity (the Cognito user pool) and RBAC/tenancy (the role catalog and the
+DynamoDB role-assignments table) are unconditional in every profile — see
+`issuer_url`, `user_pool_id`, and `role_assignments_table_name` in Outputs
+below, which stay populated even in `"identity_only"`. Outputs specific to a
+layer that isn't provisioned (`auth_domain`, `auth_url`,
+`auth_site_bucket_name`, `admin_panel_url`, `admin_api_invoke_url`,
+`auth_site_client_id`) are `null` when that layer is off.
+
 ## The auth site (login + admin panel)
 
-On by default (`create_admin_panel = true`). This module owns a single
-CloudFront distribution at `auth.<zone>` (S3 + Origin Access Control, no
-Cognito hosted UI involved) serving one SPA that covers both the public login
-screens (`/`) and the admin panel (`/admin`), authenticated through one
-Cognito app client (`auth_site`) shared by both. There's no self-signup
-client-side for the admin routes — Cognito's `admin_create_user_config` is
-pool-wide, so the real security boundary is the admin API's own privilege
-checks, not which client or route a caller came in through. Tenant-scoped
-callers (`:own` privileges) see only their own tenant's users; global-scoped
-callers (`:*` privileges) see across all tenants.
+Provisioned for the `"full"` and `"auth_api"` profiles. This module owns a
+single CloudFront distribution at `auth.<zone>` (S3 + Origin Access Control,
+no Cognito hosted UI involved) serving one SPA that covers both the public
+login screens (`/`) and, in the `"full"` profile, the admin panel (`/admin`),
+authenticated through one Cognito app client (`auth_site`) shared by both.
+There's no self-signup client-side for the admin routes — Cognito's
+`admin_create_user_config` is pool-wide, so the real security boundary is the
+admin API's own privilege checks, not which client or route a caller came in
+through. Tenant-scoped callers (`:own` privileges) see only their own
+tenant's users; global-scoped callers (`:*` privileges) see across all
+tenants.
 
 Two same-origin API behaviors on the same distribution, ordered so
 `/api/v1/auth*` never falls through to the admin API:
@@ -125,14 +148,15 @@ Two same-origin API behaviors on the same distribution, ordered so
 - **`/api/v1/auth*`** → the public, unauthenticated auth API (identify,
   password, signup, confirm, resend, forgot, reset). Cookie-session based
   (`vln_auth_session`, `HttpOnly`), rate-limited per route via
-  `auth_api_throttling` — see `doc/auth-api-rate-limiting.md`.
+  `auth_api_throttling` — see `doc/auth-api-rate-limiting.md`. Present in
+  both the `"full"` and `"auth_api"` profiles.
 - **`/api/v1/*`** → the JWT-protected admin API. A CloudFront Function lifts
   the session cookie into a `Bearer` header before forwarding, since the SPA
   can't read an `HttpOnly` cookie to set the header itself — see
   `doc/admin-api-csrf.md` for why that lift is safe. Both API origins are
   also gated by a per-deployment `X-Origin-Verify` secret header, closing off
   direct `execute-api` access that would bypass CloudFront (and any WAF
-  attached via `waf_web_acl_arn`).
+  attached via `waf_web_acl_arn`). Only present in the `"full"` profile.
 
 The SPA's *built* static assets are delivered by Terraform, so a single
 `terraform apply` yields a working site — there is no separate deploy step.
@@ -141,14 +165,16 @@ The prebuilt bundle is published to GitHub Packages as
 `site-build/package-lock.json` (the lockfile, not the semver range in
 `package.json`, is what pins the resolved version), and installed at apply
 time with `npm ci` — the same delivery mechanism as the Lambdas. Terraform
-then writes the per-deployment `config.json` (the auth-site app-client id and
-the multi-tenant flag — fetched at load time, since Vite env vars are baked
-in at build time and can't know these values yet) into the installed bundle,
-`aws s3 sync`s it to the S3 origin, and invalidates CloudFront. SPA version
-bumps flow through Dependabot PRs against `site-build/package-lock.json`,
-exactly like the Lambdas. When `create_admin_panel` is `false` there is no
-auth backend for a SPA to call, so a placeholder `index.html` is served from
-the bucket instead.
+then writes the per-deployment `config.json` (the auth-site app-client id,
+the multi-tenant flag, and whether the admin API is enabled — fetched at load
+time, since Vite env vars are baked in at build time and can't know these
+values yet) into the installed bundle, `aws s3 sync`s it to the S3 origin,
+and invalidates CloudFront. SPA version bumps flow through Dependabot PRs
+against `site-build/package-lock.json`, exactly like the Lambdas. In the
+`"auth_api"` profile the same SPA bundle is still deployed (it serves the
+public login screens); its `config.json` tells it there's no admin API to
+call, and the SPA's `/admin` page degrades to a "not enabled" notice instead
+of calling a backend that doesn't exist.
 
 Because the SPA is installed and synced at apply time, the apply host needs
 Node + npm (already required for the Lambdas) and the AWS CLI, plus a GitHub
@@ -207,7 +233,7 @@ knobs worth reviewing before a production launch.
 | `tenants` | Tenant catalog, keyed by tenantId. Only meaningful in `"multi"` mode. | `map(object(...))` |
 | `roles` | Role catalog. Defaults to a minimal `member`/`admin` catalog. | `map(object(...))` |
 | `default_role_id` | Role every newly-confirmed user is assigned. Default `"member"`. | `string` |
-| `create_admin_panel` | Whether to provision the bundled auth site (login + admin panel) and its APIs. Default `true`. | `bool` |
+| `auth_profile` | Which optional layers to provision: `"full"` (default), `"auth_api"`, or `"identity_only"`. See Auth profiles above. | `string` |
 | `tags` | Additional tags to apply to created resources. | `map(string)` |
 
 ## Outputs
@@ -217,14 +243,14 @@ knobs worth reviewing before a production launch.
 | `user_pool_id` | Cognito user pool ID. |
 | `user_pool_arn` | Cognito user pool ARN. |
 | `issuer_url` | OIDC issuer URL — wire into your own app's `http_api` `jwt_authorizers`. |
-| `auth_domain` | Auth site domain (CloudFront alias for the login and admin SPA). |
-| `auth_url` | Base HTTPS URL for the auth site (login SPA). |
+| `auth_domain` | Auth site domain (CloudFront alias for the login and admin SPA), or null when `auth_profile` is `"identity_only"`. |
+| `auth_url` | Base HTTPS URL for the auth site (login SPA), or null when `auth_profile` is `"identity_only"`. |
 | `client_ids` | Map of consumer app client IDs, keyed as in `var.clients`. |
 | `identity_pool_id` | Identity pool ID, or null when `create_identity_pool` is false. |
-| `admin_panel_url` | URL for the admin panel within the auth site (`<auth_url>/admin`), or null when disabled. |
-| `admin_api_invoke_url` | Invoke URL for the bundled admin API, or null when disabled. |
-| `auth_site_client_id` | Cognito app client ID for the bundled auth site, or null when disabled. |
-| `auth_site_bucket_name` | S3 bucket name for the auth site SPA static assets. |
+| `admin_panel_url` | URL for the admin panel within the auth site (`<auth_url>/admin`), or null unless `auth_profile` is `"full"`. |
+| `admin_api_invoke_url` | Invoke URL for the bundled admin API, or null unless `auth_profile` is `"full"`. |
+| `auth_site_client_id` | Cognito app client ID for the bundled auth site, or null when `auth_profile` is `"identity_only"`. |
+| `auth_site_bucket_name` | S3 bucket name for the auth site SPA static assets, or null when `auth_profile` is `"identity_only"`. |
 | `role_assignments_table_name` | DynamoDB table name backing user role assignments. |
 
 ## Testing

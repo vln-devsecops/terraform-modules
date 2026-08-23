@@ -118,7 +118,7 @@ run "defaults_match_doxchange_derived_contract" {
   }
 
   assert {
-    condition     = contains(tolist(aws_cloudfront_distribution.auth_site.aliases), "auth.devsecops.vlinder.ca")
+    condition     = contains(tolist(one(aws_cloudfront_distribution.auth_site[*].aliases)), "auth.devsecops.vlinder.ca")
     error_message = "Auth site CloudFront distribution alias should default to auth.<zone>."
   }
 
@@ -137,7 +137,7 @@ run "custom_domain_prefix_and_self_signup_disabled" {
   }
 
   assert {
-    condition     = contains(tolist(aws_cloudfront_distribution.auth_site.aliases), "login.devsecops.vlinder.ca")
+    condition     = contains(tolist(one(aws_cloudfront_distribution.auth_site[*].aliases)), "login.devsecops.vlinder.ca")
     error_message = "Custom domain_prefix should control the auth site CloudFront alias."
   }
 
@@ -171,7 +171,7 @@ run "consumer_clients_map_produces_matching_clients_plus_the_auth_site_client" {
 
   assert {
     condition     = length(aws_cognito_user_pool_client.auth_site) == 1
-    error_message = "The auth site client should always be created when create_admin_panel is true (the default)."
+    error_message = "The auth site client should be created whenever the auth site exists (auth_profile \"full\", the default)."
   }
 }
 
@@ -194,16 +194,96 @@ run "auth_site_client_uses_server_side_admin_auth_flow" {
   }
 }
 
-run "auth_site_client_is_omitted_when_admin_panel_is_disabled" {
+run "auth_site_client_is_present_for_the_auth_api_profile" {
   command = plan
 
   variables {
-    create_admin_panel = false
+    auth_profile = "auth_api"
+  }
+
+  assert {
+    condition     = length(aws_cognito_user_pool_client.auth_site) == 1
+    error_message = "The auth site client is shared by the login and admin SPAs -- it should still be created in the auth_api profile (admin panel off, login on)."
+  }
+}
+
+run "auth_site_client_is_omitted_for_the_identity_only_profile" {
+  command = plan
+
+  variables {
+    auth_profile = "identity_only"
   }
 
   assert {
     condition     = length(aws_cognito_user_pool_client.auth_site) == 0
-    error_message = "The auth site client should not be created when create_admin_panel is false."
+    error_message = "The auth site client should not be created in the identity_only profile -- there is no site to log into."
+  }
+}
+
+run "core_identity_endpoint_still_works_for_the_identity_only_profile" {
+  command = plan
+
+  # The identity_only profile is meant for adopters bringing their own
+  # frontend, integrating directly against Cognito -- so the core identity
+  # outputs must remain fully populated even though every optional layer
+  # (auth API, admin API, auth site) is stripped.
+  variables {
+    auth_profile = "identity_only"
+  }
+
+  assert {
+    condition     = length(aws_cognito_user_pool.this.id) > 0
+    error_message = "The Cognito user pool must still be created in the identity_only profile."
+  }
+
+  assert {
+    condition     = output.user_pool_id != null && output.user_pool_id != ""
+    error_message = "user_pool_id output must be populated in the identity_only profile."
+  }
+
+  assert {
+    condition     = output.user_pool_arn != null && output.user_pool_arn != ""
+    error_message = "user_pool_arn output must be populated in the identity_only profile."
+  }
+
+  assert {
+    condition     = output.issuer_url != null && strcontains(output.issuer_url, aws_cognito_user_pool.this.id)
+    error_message = "issuer_url output must be populated and derived from this module's user pool in the identity_only profile -- adopters integrate directly against it."
+  }
+
+  assert {
+    condition     = output.role_assignments_table_name != null && output.role_assignments_table_name != ""
+    error_message = "role_assignments_table_name output must be populated in the identity_only profile -- RBAC is unconditional."
+  }
+
+  assert {
+    condition     = output.auth_domain == null
+    error_message = "auth_domain should be null in the identity_only profile -- no site is provisioned."
+  }
+
+  assert {
+    condition     = output.auth_url == null
+    error_message = "auth_url should be null in the identity_only profile."
+  }
+
+  assert {
+    condition     = output.auth_site_bucket_name == null
+    error_message = "auth_site_bucket_name should be null in the identity_only profile."
+  }
+
+  assert {
+    condition     = output.admin_panel_url == null
+    error_message = "admin_panel_url should be null in the identity_only profile."
+  }
+
+  assert {
+    condition     = output.admin_api_invoke_url == null
+    error_message = "admin_api_invoke_url should be null in the identity_only profile."
+  }
+
+  assert {
+    condition     = output.auth_site_client_id == null
+    error_message = "auth_site_client_id should be null in the identity_only profile."
   }
 }
 

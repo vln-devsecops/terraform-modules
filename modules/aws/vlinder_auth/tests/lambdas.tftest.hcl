@@ -92,16 +92,17 @@ variables {
   acm_certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/example"
 }
 
-run "three_lambda_functions_are_created_with_the_expected_runtime" {
+run "four_lambda_functions_are_created_with_the_expected_runtime" {
   command = plan
 
   assert {
     condition = (
       aws_lambda_function.post_confirmation.runtime == "nodejs22.x" &&
       aws_lambda_function.pre_token_generation.runtime == "nodejs22.x" &&
-      aws_lambda_function.admin_api[0].runtime == "nodejs22.x"
+      aws_lambda_function.admin_api[0].runtime == "nodejs22.x" &&
+      aws_lambda_function.auth_api[0].runtime == "nodejs22.x"
     )
-    error_message = "All three Lambdas should run on nodejs22.x."
+    error_message = "All four Lambdas should run on nodejs22.x."
   }
 }
 
@@ -128,7 +129,7 @@ run "lambda_handler_paths_match_dist_layout" {
   }
 }
 
-run "all_three_lambdas_share_the_same_zip" {
+run "all_four_lambdas_share_the_same_zip" {
   command = plan
 
   # One zip for the full dist/ tree (shared/ present at root) rather than
@@ -141,6 +142,11 @@ run "all_three_lambdas_share_the_same_zip" {
   assert {
     condition     = aws_lambda_function.post_confirmation.filename == aws_lambda_function.admin_api[0].filename
     error_message = "admin_api must share the same zip as the trigger Lambdas so dist/shared/ is available."
+  }
+
+  assert {
+    condition     = aws_lambda_function.post_confirmation.filename == aws_lambda_function.auth_api[0].filename
+    error_message = "auth_api must share the same zip as the trigger Lambdas so dist/shared/ is available."
   }
 }
 

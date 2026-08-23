@@ -143,26 +143,46 @@ run "auth_api_throttling_override_is_plumbed_through_to_every_route" {
   }
 }
 
-run "auth_api_routes_are_omitted_when_admin_panel_is_disabled" {
+run "auth_api_routes_are_present_for_the_auth_api_profile" {
+  command = plan
+
+  # The public auth API belongs to identity, not the admin panel -- it should
+  # stay provisioned when only the admin panel is dropped.
+  variables {
+    auth_profile = "auth_api"
+  }
+
+  assert {
+    condition     = length(local.auth_api_routes) > 0
+    error_message = "auth_api_routes should still be populated in the auth_api profile (admin panel off, auth API on)."
+  }
+
+  assert {
+    condition     = length(module.auth_api) == 1
+    error_message = "The auth_api module should still be provisioned in the auth_api profile."
+  }
+}
+
+run "auth_api_routes_are_omitted_for_the_identity_only_profile" {
   command = plan
 
   variables {
-    create_admin_panel = false
+    auth_profile = "identity_only"
   }
 
   assert {
     condition     = length(local.auth_api_routes) == 0
-    error_message = "auth_api_routes should be empty when create_admin_panel is false."
+    error_message = "auth_api_routes should be empty in the identity_only profile."
   }
 
   assert {
     condition     = length(module.auth_api) == 0
-    error_message = "The auth_api module should not be provisioned when create_admin_panel is false."
+    error_message = "The auth_api module should not be provisioned in the identity_only profile."
   }
 
   assert {
     condition     = length(module.auth_api_authorizer) == 0
-    error_message = "The auth_api_authorizer module should not be provisioned when create_admin_panel is false."
+    error_message = "The auth_api_authorizer module should not be provisioned in the identity_only profile."
   }
 }
 

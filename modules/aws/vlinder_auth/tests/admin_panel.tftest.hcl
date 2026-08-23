@@ -114,17 +114,17 @@ run "auth_site_is_served_from_a_dedicated_cloudfront_distribution" {
   command = plan
 
   assert {
-    condition     = length(aws_cloudfront_distribution.auth_site.aliases) > 0
+    condition     = length(one(aws_cloudfront_distribution.auth_site[*].aliases)) > 0
     error_message = "The auth site CloudFront distribution should have at least one alias."
   }
 
   assert {
-    condition     = contains(tolist(aws_cloudfront_distribution.auth_site.aliases), "auth.devsecops.vlinder.ca")
+    condition     = contains(tolist(one(aws_cloudfront_distribution.auth_site[*].aliases)), "auth.devsecops.vlinder.ca")
     error_message = "The auth site distribution alias should be auth.<zone> using the default domain_prefix."
   }
 
   assert {
-    condition     = aws_s3_bucket.auth_site.bucket == "myapp-prod-auth-site"
+    condition     = one(aws_s3_bucket.auth_site[*].bucket) == "myapp-prod-auth-site"
     error_message = "The auth site S3 bucket should be named <app_name>-<environment>-auth-site."
   }
 }
@@ -134,7 +134,7 @@ run "admin_panel_is_at_the_admin_path_not_a_separate_subdomain" {
 
   assert {
     condition = alltrue([
-      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      for rule in one(aws_cloudfront_distribution.auth_site[*].ordered_cache_behavior) :
       rule.path_pattern != "*.devsecops.vlinder.ca*"
     ])
     error_message = "Admin panel must NOT be served from a separate subdomain -- it is a path (/admin) on the auth site distribution."
@@ -142,44 +142,67 @@ run "admin_panel_is_at_the_admin_path_not_a_separate_subdomain" {
 
   assert {
     condition = anytrue([
-      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      for rule in one(aws_cloudfront_distribution.auth_site[*].ordered_cache_behavior) :
       rule.path_pattern == "/api/v1/*"
     ])
-    error_message = "Admin API should be accessible at /api/v1/* on the auth site distribution when create_admin_panel is true."
+    error_message = "Admin API should be accessible at /api/v1/* on the auth site distribution when auth_profile is \"full\"."
   }
 }
 
-run "admin_api_behavior_is_omitted_when_admin_panel_is_disabled" {
+run "admin_api_behavior_is_omitted_for_the_auth_api_profile" {
   command = plan
 
   variables {
-    create_admin_panel = false
+    auth_profile = "auth_api"
   }
 
   assert {
     condition = !anytrue([
-      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      for rule in one(aws_cloudfront_distribution.auth_site[*].ordered_cache_behavior) :
       rule.path_pattern == "/api/v1/*"
     ])
-    error_message = "The /api/v1/* CloudFront behavior should not be present when create_admin_panel is false."
+    error_message = "The /api/v1/* CloudFront behavior should not be present in the auth_api profile."
+  }
+
+  assert {
+    condition     = length(aws_lambda_function.admin_api) == 0
+    error_message = "The admin API Lambda should not be provisioned in the auth_api profile."
   }
 }
 
-run "auth_site_is_always_provisioned_regardless_of_admin_panel_flag" {
+run "auth_site_is_provisioned_for_the_auth_api_profile_even_without_the_admin_panel" {
   command = plan
 
   variables {
-    create_admin_panel = false
+    auth_profile = "auth_api"
   }
 
   assert {
-    condition     = length(aws_cloudfront_distribution.auth_site.aliases) > 0
-    error_message = "The auth site CloudFront distribution should exist even when create_admin_panel is false."
+    condition     = length(one(aws_cloudfront_distribution.auth_site[*].aliases)) > 0
+    error_message = "The auth site CloudFront distribution should exist in the auth_api profile -- it still serves the login SPA."
   }
 
   assert {
-    condition     = length(aws_s3_bucket.auth_site.bucket) > 0
-    error_message = "The auth site S3 bucket should exist even when create_admin_panel is false."
+    condition     = length(one(aws_s3_bucket.auth_site[*].bucket)) > 0
+    error_message = "The auth site S3 bucket should exist in the auth_api profile."
+  }
+}
+
+run "auth_site_is_not_provisioned_for_the_identity_only_profile" {
+  command = plan
+
+  variables {
+    auth_profile = "identity_only"
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_distribution.auth_site) == 0
+    error_message = "No CloudFront distribution should be provisioned in the identity_only profile -- bring your own everything."
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket.auth_site) == 0
+    error_message = "No S3 bucket should be provisioned in the identity_only profile."
   }
 }
 
@@ -191,7 +214,7 @@ run "custom_domain_prefix_controls_auth_site_hostname" {
   }
 
   assert {
-    condition     = contains(tolist(aws_cloudfront_distribution.auth_site.aliases), "login.devsecops.vlinder.ca")
+    condition     = contains(tolist(one(aws_cloudfront_distribution.auth_site[*].aliases)), "login.devsecops.vlinder.ca")
     error_message = "Custom domain_prefix should determine the auth site CloudFront alias."
   }
 }
@@ -203,7 +226,7 @@ run "idp_proxy_behavior_is_retired" {
   # speaks only /api/v1/auth now, so no /api/v1/idp* behavior should remain.
   assert {
     condition = alltrue([
-      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      for rule in one(aws_cloudfront_distribution.auth_site[*].ordered_cache_behavior) :
       !startswith(rule.path_pattern, "/api/v1/idp")
     ])
     error_message = "The /api/v1/idp* CloudFront behavior (retired Cognito IDP proxy) should no longer exist."
@@ -211,7 +234,7 @@ run "idp_proxy_behavior_is_retired" {
 
   assert {
     condition = alltrue([
-      for o in aws_cloudfront_distribution.auth_site.origin : o.origin_id != "CognitoIdp"
+      for o in one(aws_cloudfront_distribution.auth_site[*].origin) : o.origin_id != "CognitoIdp"
     ])
     error_message = "The Cognito-IDP custom origin should be removed with the proxy."
   }
@@ -222,7 +245,7 @@ run "auth_api_behavior_is_present_when_admin_panel_enabled" {
 
   assert {
     condition = anytrue([
-      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
+      for rule in one(aws_cloudfront_distribution.auth_site[*].ordered_cache_behavior) :
       rule.path_pattern == "/api/v1/auth*"
     ])
     error_message = "The /api/v1/auth* CloudFront behavior (vendor-neutral auth API) should be present."
@@ -232,16 +255,16 @@ run "auth_api_behavior_is_present_when_admin_panel_enabled" {
   # or auth requests fall through to the admin API.
   assert {
     condition = (
-      [for i, rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior : i if rule.path_pattern == "/api/v1/auth*"][0]
+      [for i, rule in one(aws_cloudfront_distribution.auth_site[*].ordered_cache_behavior) : i if rule.path_pattern == "/api/v1/auth*"][0]
       <
-      [for i, rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior : i if rule.path_pattern == "/api/v1/*"][0]
+      [for i, rule in one(aws_cloudfront_distribution.auth_site[*].ordered_cache_behavior) : i if rule.path_pattern == "/api/v1/*"][0]
     )
     error_message = "The /api/v1/auth* behavior must be ordered before /api/v1/*."
   }
 
   assert {
     condition     = length(aws_lambda_function.auth_api) == 1
-    error_message = "The auth API Lambda should be provisioned when create_admin_panel is true."
+    error_message = "The auth API Lambda should be provisioned when auth_profile is \"full\"."
   }
 
   assert {
@@ -255,7 +278,7 @@ run "session_signing_key_is_provisioned_via_secrets_manager_not_a_terraform_gene
 
   assert {
     condition     = length(aws_secretsmanager_secret.auth_session_signing_key) == 1
-    error_message = "The session-signing-key secret should be provisioned when create_admin_panel is true."
+    error_message = "The session-signing-key secret should be provisioned when the public auth API is on."
   }
 
   assert {
@@ -296,36 +319,33 @@ run "session_signing_key_is_provisioned_via_secrets_manager_not_a_terraform_gene
   }
 }
 
-run "session_signing_key_secret_is_omitted_when_admin_panel_disabled" {
+run "session_signing_key_secret_is_provisioned_for_the_auth_api_profile" {
   command = plan
 
   variables {
-    create_admin_panel = false
+    auth_profile = "auth_api"
+  }
+
+  assert {
+    condition     = length(aws_secretsmanager_secret.auth_session_signing_key) == 1
+    error_message = "The session-signing-key secret belongs to the public auth API, not the admin panel -- it should still be provisioned in the auth_api profile."
+  }
+}
+
+run "session_signing_key_secret_is_omitted_for_the_identity_only_profile" {
+  command = plan
+
+  variables {
+    auth_profile = "identity_only"
   }
 
   assert {
     condition     = length(aws_secretsmanager_secret.auth_session_signing_key) == 0
-    error_message = "The session-signing-key secret should not be provisioned when create_admin_panel is false."
+    error_message = "The session-signing-key secret should not be provisioned in the identity_only profile (no auth API at all)."
   }
 
   assert {
     condition     = length(time_rotating.auth_session_signing_key) == 0
-    error_message = "The session-signing-key rotation timer should not be provisioned when create_admin_panel is false."
-  }
-}
-
-run "auth_api_behavior_is_omitted_when_admin_panel_disabled" {
-  command = plan
-
-  variables {
-    create_admin_panel = false
-  }
-
-  assert {
-    condition = !anytrue([
-      for rule in aws_cloudfront_distribution.auth_site.ordered_cache_behavior :
-      rule.path_pattern == "/api/v1/auth*"
-    ])
-    error_message = "The /api/v1/auth* behavior should not be present when create_admin_panel is false."
+    error_message = "The session-signing-key rotation timer should not be provisioned in the identity_only profile."
   }
 }
