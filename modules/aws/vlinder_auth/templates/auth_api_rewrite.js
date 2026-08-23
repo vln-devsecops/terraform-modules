@@ -5,7 +5,7 @@
 // This behavior is ordered before /api/v1/* so auth requests never fall through
 // to the admin API.
 function handler(event) {
-  var request = event.request;
+  const request = event.request;
 
   // See admin_api_rewrite.js's identical line for why this is dropped here
   // too, not just relied on via CloudFront's origin custom_header override.

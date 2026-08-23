@@ -30,7 +30,7 @@
 // client-supplied Authorization header -- the SPA can't accidentally
 // authenticate as a different principal than its own session by sending one.
 function handler(event) {
-  var request = event.request;
+  const request = event.request;
 
   // CloudFront's own origin custom_header (added later, at origin-request
   // time) overwrites a same-named viewer header before forwarding to
@@ -42,8 +42,8 @@ function handler(event) {
 
   request.uri = request.uri.replace(/^\/api\/v1/, '') || '/';
 
-  var cookies = request.cookies || {};
-  if (cookies['vln_auth_session'] && cookies['vln_auth_session'].value) {
+  const cookies = request.cookies || {};
+  if (cookies['vln_auth_session']?.value) {
     request.headers['authorization'] = { value: 'Bearer ' + cookies['vln_auth_session'].value };
   }
 
