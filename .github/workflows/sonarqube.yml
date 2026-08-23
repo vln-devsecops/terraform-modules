@@ -4,6 +4,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Both jobs below already declare their own scoped-down permissions; this
+# top-level block just makes the workflow's default explicit (none) instead
+# of implicit, satisfying checkov's CKV2_GHA_1 (it flags any workflow with
+# no top-level `permissions:` regardless of per-job overrides).
+permissions: {}
+
 jobs:
   baseline:
     if: github.event_name == 'push'
