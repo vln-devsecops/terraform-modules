@@ -104,18 +104,12 @@ run "spa_is_deployed_and_configured_by_terraform_when_admin_panel_enabled" {
   # deploy script, so a single apply yields a working site.
   assert {
     condition     = length(null_resource.auth_site_package) == 1
-    error_message = "The auth-site package should be installed at apply time when create_admin_panel is true."
+    error_message = "The auth-site package should be installed at apply time when auth_profile is \"full\"."
   }
 
   assert {
     condition     = length(null_resource.auth_site_deploy) == 1
-    error_message = "The auth-site sync/deploy step should run when create_admin_panel is true."
-  }
-
-  # The real SPA owns index.html; no placeholder is uploaded.
-  assert {
-    condition     = length(aws_s3_object.auth_site_placeholder_index) == 0
-    error_message = "The placeholder index.html must not be uploaded when the real SPA is deployed."
+    error_message = "The auth-site sync/deploy step should run when auth_profile is \"full\"."
   }
 }
 
@@ -124,7 +118,7 @@ run "config_json_carries_the_client_id_and_single_tenant_flag" {
 
   assert {
     condition     = length(local_file.auth_site_config) == 1
-    error_message = "config.json should be written by Terraform when create_admin_panel is true."
+    error_message = "config.json should be written by Terraform when auth_profile is \"full\"."
   }
 
   assert {
@@ -135,6 +129,11 @@ run "config_json_carries_the_client_id_and_single_tenant_flag" {
   assert {
     condition     = jsondecode(local_file.auth_site_config[0].content).multiTenant == false
     error_message = "config.json multiTenant should be false in the default single-tenant mode."
+  }
+
+  assert {
+    condition     = jsondecode(local_file.auth_site_config[0].content).adminEnabled == true
+    error_message = "config.json adminEnabled should be true when auth_profile is \"full\"."
   }
 }
 
@@ -151,25 +150,46 @@ run "config_json_multi_tenant_flag_follows_tenancy_mode" {
   }
 }
 
-run "placeholder_is_served_when_admin_panel_disabled" {
+run "spa_is_still_deployed_with_admin_disabled_in_its_config_for_the_auth_api_profile" {
   command = plan
 
+  # The SPA bundle itself still serves the login screens in this profile --
+  # only its config tells it there's no admin backend to call, rather than a
+  # separate placeholder page. See node-vlinder-auth's config.ts/admin-main.ts.
   variables {
-    create_admin_panel = false
+    auth_profile = "auth_api"
   }
 
   assert {
-    condition     = length(aws_s3_object.auth_site_placeholder_index) == 1
-    error_message = "A placeholder index.html should be served when there is no SPA backend (create_admin_panel = false)."
+    condition     = length(null_resource.auth_site_deploy) == 1
+    error_message = "The SPA deploy step should still run in the auth_api profile -- it serves the login screens."
+  }
+
+  assert {
+    condition     = jsondecode(local_file.auth_site_config[0].content).adminEnabled == false
+    error_message = "config.json adminEnabled should be false in the auth_api profile, so the SPA can degrade gracefully at /admin."
+  }
+}
+
+run "no_site_deploy_at_all_for_the_identity_only_profile" {
+  command = plan
+
+  variables {
+    auth_profile = "identity_only"
+  }
+
+  assert {
+    condition     = length(null_resource.auth_site_package) == 0
+    error_message = "The auth-site package should not be installed in the identity_only profile -- there is no site."
   }
 
   assert {
     condition     = length(null_resource.auth_site_deploy) == 0
-    error_message = "The SPA deploy step should not run when create_admin_panel is false."
+    error_message = "The SPA deploy step should not run in the identity_only profile."
   }
 
   assert {
     condition     = length(local_file.auth_site_config) == 0
-    error_message = "config.json should not be written when create_admin_panel is false."
+    error_message = "config.json should not be written in the identity_only profile."
   }
 }

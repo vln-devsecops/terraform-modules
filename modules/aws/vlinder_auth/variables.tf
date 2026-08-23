@@ -234,12 +234,17 @@ variable "default_role_id" {
   }
 }
 
-# --- Admin panel (optional; on by default) ---------------------------------
+# --- Auth profile (optional layers; full by default) ------------------------
 
-variable "create_admin_panel" {
-  description = "Whether to provision the bundled auth site (auth SPA + admin panel, each with its own Cognito client) and the admin API. Set false to use only identity + RBAC with your own frontend."
-  type        = bool
-  default     = true
+variable "auth_profile" {
+  description = "Which optional layers of the module to provision, from most to least:\n  \"full\" (default): public auth API + bundled admin API/panel + the auth-site CloudFront/S3/SPA shell serving both.\n  \"auth_api\": public auth API (login/session backend) + the auth-site shell serving just the login SPA at \"/\" -- no admin API/panel; bring your own admin UI against the RBAC table and Cognito Admin APIs.\n  \"identity_only\": Cognito user pool + RBAC/tenancy only -- no auth API, no admin API, no CloudFront/S3/SPA shell. Bring your own everything."
+  type        = string
+  default     = "full"
+
+  validation {
+    condition     = contains(["full", "auth_api", "identity_only"], var.auth_profile)
+    error_message = "auth_profile must be \"full\", \"auth_api\", or \"identity_only\"."
+  }
 }
 
 # --- Tags -------------------------------------------------------------------

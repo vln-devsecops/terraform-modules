@@ -102,12 +102,12 @@ run "admin_api_is_provisioned_via_the_shared_http_api_module_with_a_lambda_autho
 
   assert {
     condition     = length(module.admin_api) == 1
-    error_message = "The admin API should be provisioned via the shared http_api module when create_admin_panel is true (the default)."
+    error_message = "The admin API should be provisioned via the shared http_api module when auth_profile is \"full\" (the default)."
   }
 
   assert {
     condition     = length(module.admin_api_authorizer) == 1
-    error_message = "The admin API should get its own http_api_authorizer instance, require_jwt = true, when create_admin_panel is true."
+    error_message = "The admin API should get its own http_api_authorizer instance, require_jwt = true, when auth_profile is \"full\"."
   }
 
   # http_api and http_api_authorizer are separate modules with their own test
@@ -131,21 +131,39 @@ run "admin_api_is_provisioned_via_the_shared_http_api_module_with_a_lambda_autho
   }
 }
 
-run "admin_api_is_omitted_when_admin_panel_is_disabled" {
+run "admin_api_is_omitted_for_the_auth_api_profile" {
   command = plan
 
   variables {
-    create_admin_panel = false
+    auth_profile = "auth_api"
   }
 
   assert {
     condition     = length(module.admin_api) == 0
-    error_message = "The admin API should not be provisioned when create_admin_panel is false."
+    error_message = "The admin API should not be provisioned in the auth_api profile."
   }
 
   assert {
     condition     = length(aws_lambda_function.admin_api) == 0
-    error_message = "The admin-api Lambda itself should not be provisioned when create_admin_panel is false."
+    error_message = "The admin-api Lambda itself should not be provisioned in the auth_api profile."
+  }
+}
+
+run "admin_api_is_omitted_for_the_identity_only_profile" {
+  command = plan
+
+  variables {
+    auth_profile = "identity_only"
+  }
+
+  assert {
+    condition     = length(module.admin_api) == 0
+    error_message = "The admin API should not be provisioned in the identity_only profile."
+  }
+
+  assert {
+    condition     = length(aws_lambda_function.admin_api) == 0
+    error_message = "The admin-api Lambda itself should not be provisioned in the identity_only profile."
   }
 }
 

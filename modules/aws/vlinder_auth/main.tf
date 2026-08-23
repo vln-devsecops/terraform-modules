@@ -21,6 +21,13 @@ locals {
   }
 
   auth_site_bucket_name = "${var.app_name}-${var.deployment_environment}-auth-site"
+
+  # auth_profile resolves into the individual layer gates used throughout this
+  # file. Each implies the one below it: create_admin_panel implies
+  # create_public_auth_api implies create_auth_site.
+  create_admin_panel     = var.auth_profile == "full"
+  create_public_auth_api = contains(["full", "auth_api"], var.auth_profile)
+  create_auth_site       = contains(["full", "auth_api"], var.auth_profile)
 }
 
 # --- Identity ---------------------------------------------------------------
@@ -179,7 +186,7 @@ resource "aws_cognito_user_pool_client" "consumer" {
 }
 
 resource "aws_cognito_user_pool_client" "auth_site" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_auth_site ? 1 : 0
 
   name         = "${var.app_name}-auth-site-${var.deployment_environment}"
   user_pool_id = aws_cognito_user_pool.this.id
@@ -467,13 +474,14 @@ module "user_role_assignments" {
 # To install locally before running terraform validate/test:
 #   npm ci --prefix modules/aws/vlinder_auth/lambda-build
 #
-# The build pipeline (esbuild) produces three self-contained CJS bundles at
+# The build pipeline (esbuild) produces four self-contained CJS bundles at
 # dist/post-confirmation/handler.js, dist/pre-token-generation/handler.js,
-# and dist/admin-api/handler.js -- each with all dependencies (including the
-# shared/ helpers) inlined. dist/ also contains a package.json marking the
-# directory as "type": "commonjs" so Node loads the .js files as CJS
-# regardless of the source package's ESM type setting. The zip includes the
-# full dist/ tree; handler references use the subdirectory prefix:
+# dist/admin-api/handler.js, and dist/auth-api/handler.js -- each with all
+# dependencies (including the shared/ helpers) inlined. dist/ also contains a
+# package.json marking the directory as "type": "commonjs" so Node loads the
+# .js files as CJS regardless of the source package's ESM type setting. The
+# zip includes the full dist/ tree; handler references use the subdirectory
+# prefix:
 # "<subdir>/handler.handler".
 
 resource "null_resource" "lambda_package" {
@@ -705,7 +713,7 @@ resource "aws_lambda_permission" "pre_token_generation" {
 }
 
 resource "aws_iam_role" "admin_api" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_admin_panel ? 1 : 0
 
   name               = "${var.app_name}-${var.deployment_environment}-admin-api"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
@@ -713,14 +721,14 @@ resource "aws_iam_role" "admin_api" {
 }
 
 resource "aws_iam_role_policy_attachment" "admin_api_logging" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_admin_panel ? 1 : 0
 
   role       = aws_iam_role.admin_api[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 resource "aws_iam_policy" "admin_api" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_admin_panel ? 1 : 0
 
   name = "${var.app_name}-${var.deployment_environment}-admin-api"
 
@@ -769,7 +777,7 @@ resource "aws_iam_policy" "admin_api" {
 }
 
 resource "aws_iam_role_policy_attachment" "admin_api_permissions" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_admin_panel ? 1 : 0
 
   role       = aws_iam_role.admin_api[0].name
   policy_arn = aws_iam_policy.admin_api[0].arn
@@ -780,7 +788,7 @@ resource "aws_lambda_function" "admin_api" {
   # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
   # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
   # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_admin_panel ? 1 : 0
 
   function_name    = "${var.app_name}-${var.deployment_environment}-admin-api"
   role             = aws_iam_role.admin_api[0].arn
@@ -819,7 +827,7 @@ locals {
   # references it, regardless of whether that reference sits inside a
   # count = 0 block -- so aws_lambda_function.admin_api[0] must never appear
   # in this local's expression unless the admin API actually exists.
-  admin_api_routes = var.create_admin_panel ? {
+  admin_api_routes = local.create_admin_panel ? {
     list_users = {
       route_key            = "GET /users"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
@@ -860,7 +868,7 @@ locals {
 }
 
 module "admin_api_authorizer" {
-  count  = var.create_admin_panel ? 1 : 0
+  count  = local.create_admin_panel ? 1 : 0
   source = "../http_api_authorizer"
 
   name        = "${var.app_name}-${var.deployment_environment}-admin-api"
@@ -876,7 +884,7 @@ module "admin_api_authorizer" {
 }
 
 module "admin_api" {
-  count  = var.create_admin_panel ? 1 : 0
+  count  = local.create_admin_panel ? 1 : 0
   source = "../http_api"
 
   name = "${var.app_name}-${var.deployment_environment}-admin-api"
@@ -924,7 +932,7 @@ module "admin_api" {
 # infra/rg_security.tf's terraform_modules_integration_test_policy, which
 # must carry secretsmanager:GetRandomPassword for this to work).
 resource "aws_secretsmanager_secret" "auth_session_signing_key" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_public_auth_api ? 1 : 0
 
   # checkov:skip=CKV2_AWS_57:Rotation is handled by time_rotating + the local-exec reseed below (see comment above), not aws_secretsmanager_secret_rotation
   name       = "${var.app_name}-${var.deployment_environment}-auth-session-signing-key"
@@ -934,13 +942,13 @@ resource "aws_secretsmanager_secret" "auth_session_signing_key" {
 }
 
 resource "time_rotating" "auth_session_signing_key" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_public_auth_api ? 1 : 0
 
   rotation_days = 30
 }
 
 resource "null_resource" "auth_session_signing_key_seed" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_public_auth_api ? 1 : 0
 
   triggers = {
     secret_id = one(aws_secretsmanager_secret.auth_session_signing_key[*].id)
@@ -964,7 +972,7 @@ resource "null_resource" "auth_session_signing_key_seed" {
 }
 
 resource "aws_iam_role" "auth_api" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_public_auth_api ? 1 : 0
 
   name               = "${var.app_name}-${var.deployment_environment}-auth-api"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
@@ -972,14 +980,14 @@ resource "aws_iam_role" "auth_api" {
 }
 
 resource "aws_iam_role_policy_attachment" "auth_api_logging" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_public_auth_api ? 1 : 0
 
   role       = aws_iam_role.auth_api[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 resource "aws_iam_policy" "auth_api" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_public_auth_api ? 1 : 0
 
   name = "${var.app_name}-${var.deployment_environment}-auth-api"
 
@@ -1029,7 +1037,7 @@ resource "aws_iam_policy" "auth_api" {
 }
 
 resource "aws_iam_role_policy_attachment" "auth_api_permissions" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_public_auth_api ? 1 : 0
 
   role       = aws_iam_role.auth_api[0].name
   policy_arn = aws_iam_policy.auth_api[0].arn
@@ -1040,7 +1048,7 @@ resource "aws_lambda_function" "auth_api" {
   # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
   # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
   # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_public_auth_api ? 1 : 0
 
   function_name    = "${var.app_name}-${var.deployment_environment}-auth-api"
   role             = aws_iam_role.auth_api[0].arn
@@ -1080,7 +1088,7 @@ locals {
   # shared across all callers of a route (not per-source-IP) -- see
   # doc/auth-api-rate-limiting.md for what this does and doesn't defend
   # against, and why waf_web_acl_arn is still recommended alongside it.
-  auth_api_routes = var.create_admin_panel ? {
+  auth_api_routes = local.create_public_auth_api ? {
     identify = {
       route_key              = "POST /auth/identify"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
@@ -1141,7 +1149,7 @@ locals {
 }
 
 module "auth_api_authorizer" {
-  count  = var.create_admin_panel ? 1 : 0
+  count  = local.create_public_auth_api ? 1 : 0
   source = "../http_api_authorizer"
 
   name = "${var.app_name}-${var.deployment_environment}-auth-api"
@@ -1152,7 +1160,7 @@ module "auth_api_authorizer" {
 }
 
 module "auth_api" {
-  count  = var.create_admin_panel ? 1 : 0
+  count  = local.create_public_auth_api ? 1 : 0
   source = "../http_api"
 
   name = "${var.app_name}-${var.deployment_environment}-auth-api"
@@ -1191,8 +1199,12 @@ module "auth_api" {
 #   /api/v1/* behavior → Custom origin: the admin HTTP API (JWT-protected),
 #                        TTL 0, never cached. Forwards Authorization +
 #                        Content-Type. A CloudFront Function strips /api/v1
-#                        before forwarding. Only provisioned when
-#                        create_admin_panel is true.
+#                        before forwarding. Only provisioned in the "full"
+#                        auth_profile.
+#
+# This whole distribution/bucket only exists for the "full" and "auth_api"
+# auth_profiles (local.create_auth_site); "identity_only" provisions no site
+# infra at all -- see the auth_profile variable for what each provisions.
 #
 # Branding: the SPA reads its theme at runtime from ui-auth's theme.ts
 # mechanism (which uses CSS custom properties). The former logo_base64 / css
@@ -1207,12 +1219,14 @@ module "auth_api" {
 # null_resource.auth_site_package via `npm ci` -- the lockfile, not the
 # semver range in package.json, is what pins the resolved version. Terraform
 # then writes the runtime config.json (the values that vary per deployment --
-# the auth-site app-client id and the multi-tenant flag) into the installed
-# bundle and syncs the whole thing to the S3 origin, invalidating CloudFront
-# so the change takes effect. Version bumps flow through Dependabot PRs
-# against site-build/package-lock.json, exactly like the Lambda. When
-# create_admin_panel is false there is no auth backend to talk to, so a
-# placeholder index.html is served instead of the real SPA.
+# the auth-site app-client id, the multi-tenant flag, and whether the admin
+# API is enabled) into the installed bundle and syncs the whole thing to the
+# S3 origin, invalidating CloudFront so the change takes effect. Version
+# bumps flow through Dependabot PRs against site-build/package-lock.json,
+# exactly like the Lambda. In the "auth_api" profile the same SPA bundle is
+# still deployed (it serves the public login screens); its own config.json
+# tells it there's no admin API to call, and it degrades accordingly instead
+# of a separate placeholder page.
 
 # trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket" "auth_site" {
@@ -1222,13 +1236,17 @@ resource "aws_s3_bucket" "auth_site" {
   # checkov:skip=CKV_AWS_145:KMS encryption not required for OAC-protected public content
   # checkov:skip=CKV2_AWS_61:S3 deletion protection by policy for OAC-protected public bucket
   # checkov:skip=CKV2_AWS_62:Event notifications not required for OAC-protected public content
+  count = local.create_auth_site ? 1 : 0
+
   bucket        = local.auth_site_bucket_name
   force_destroy = var.auth_site_force_destroy
   tags          = merge(local.common_tags, { rg = "storage" })
 }
 
 resource "aws_s3_bucket_public_access_block" "auth_site" {
-  bucket = aws_s3_bucket.auth_site.id
+  count = local.create_auth_site ? 1 : 0
+
+  bucket = aws_s3_bucket.auth_site[0].id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -1236,54 +1254,25 @@ resource "aws_s3_bucket_public_access_block" "auth_site" {
   restrict_public_buckets = true
 }
 
-resource "aws_s3_object" "auth_site_placeholder_index" {
-  # Only when there's no real SPA to deploy (create_admin_panel = false); the
-  # SPA sync below owns index.html otherwise.
-  count = var.create_admin_panel ? 0 : 1
-
-  bucket       = aws_s3_bucket.auth_site.id
-  key          = "index.html"
-  content      = <<-HTML
-    <!doctype html>
-    <html lang="en">
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>${local.auth_site_domain}</title>
-        <style>body{font-family:system-ui,sans-serif;margin:2rem}</style>
-      </head>
-      <body>
-        <h1>Auth site placeholder</h1>
-        <p>Deploy the auth SPA to this bucket to replace this page.</p>
-      </body>
-    </html>
-  HTML
-  content_type = "text/html; charset=utf-8"
-
-  lifecycle {
-    ignore_changes = [content, content_type, cache_control]
-  }
-}
-
 # --- SPA build delivery (Terraform-managed) ---------------------------------
 #
 # Installs the prebuilt @vln-devsecops/auth-site bundle at apply time (same
 # mechanism as the Lambda: `npm ci` of a lockfile-pinned, GitHub Packages
 # published artifact), writes the per-deployment config.json into it, and syncs
-# it to the S3 origin. Guarded on create_admin_panel: without the admin panel
-# there is no auth API for the SPA to call, so the placeholder above is served
-# instead.
+# it to the S3 origin. Guarded on create_auth_site -- the whole site (bucket,
+# distribution, this deploy) doesn't exist in the "identity_only" profile.
 
 locals {
   auth_site_dist_dir = "${path.module}/site-build/node_modules/@vln-devsecops/auth-site/dist"
   auth_site_config_json = jsonencode({
     userPoolClientId = one(aws_cognito_user_pool_client.auth_site[*].id)
     multiTenant      = var.tenancy_mode == "multi"
+    adminEnabled     = local.create_admin_panel
   })
 }
 
 resource "null_resource" "auth_site_package" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_auth_site ? 1 : 0
 
   # install_present guards against a fresh checkout against existing remote
   # state -- see the matching comment on null_resource.lambda_package for why
@@ -1305,7 +1294,7 @@ resource "null_resource" "auth_site_package" {
 # the installed bundle so the sync below picks it up. Uses local_file, per the
 # design intent that Terraform -- not a deploy script -- produces config.json.
 resource "local_file" "auth_site_config" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_auth_site ? 1 : 0
 
   filename = "${local.auth_site_dist_dir}/config.json"
   content  = local.auth_site_config_json
@@ -1314,7 +1303,7 @@ resource "local_file" "auth_site_config" {
 }
 
 resource "null_resource" "auth_site_deploy" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_auth_site ? 1 : 0
 
   # Redeploy when the pinned SPA version changes (package-lock.json bump,
   # since that lockfile -- not the package.json semver range -- pins the
@@ -1324,17 +1313,17 @@ resource "null_resource" "auth_site_deploy" {
   triggers = {
     package_lock = filemd5("${path.module}/site-build/package-lock.json")
     config       = local.auth_site_config_json
-    bucket       = aws_s3_bucket.auth_site.id
-    distribution = aws_cloudfront_distribution.auth_site.id
+    bucket       = one(aws_s3_bucket.auth_site[*].id)
+    distribution = one(aws_cloudfront_distribution.auth_site[*].id)
   }
 
   provisioner "local-exec" {
     interpreter = ["/bin/bash", "-c"]
     command     = <<-EOT
       set -euo pipefail
-      aws s3 sync "${local.auth_site_dist_dir}" "s3://${aws_s3_bucket.auth_site.id}/" --delete
+      aws s3 sync "${local.auth_site_dist_dir}" "s3://${one(aws_s3_bucket.auth_site[*].id)}/" --delete
       aws cloudfront create-invalidation \
-        --distribution-id "${aws_cloudfront_distribution.auth_site.id}" \
+        --distribution-id "${one(aws_cloudfront_distribution.auth_site[*].id)}" \
         --paths "/*"
     EOT
   }
@@ -1347,6 +1336,8 @@ resource "null_resource" "auth_site_deploy" {
 }
 
 resource "aws_cloudfront_origin_access_control" "auth_site" {
+  count = local.create_auth_site ? 1 : 0
+
   name                              = "${replace(local.auth_site_domain, ".", "-")}-oac"
   description                       = "Origin access control for ${local.auth_site_domain} SPA"
   origin_access_control_origin_type = "s3"
@@ -1355,6 +1346,8 @@ resource "aws_cloudfront_origin_access_control" "auth_site" {
 }
 
 resource "aws_cloudfront_function" "spa_viewer_request" {
+  count = local.create_auth_site ? 1 : 0
+
   name    = "${replace(local.auth_site_domain, ".", "-")}-spa-vr"
   runtime = "cloudfront-js-2.0"
   publish = true
@@ -1363,7 +1356,7 @@ resource "aws_cloudfront_function" "spa_viewer_request" {
 }
 
 resource "aws_cloudfront_function" "admin_api_rewrite" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_admin_panel ? 1 : 0
 
   name    = "${replace(local.auth_site_domain, ".", "-")}-admin-api-vr"
   runtime = "cloudfront-js-2.0"
@@ -1373,7 +1366,7 @@ resource "aws_cloudfront_function" "admin_api_rewrite" {
 }
 
 resource "aws_cloudfront_function" "auth_api_rewrite" {
-  count = var.create_admin_panel ? 1 : 0
+  count = local.create_public_auth_api ? 1 : 0
 
   name    = "${replace(local.auth_site_domain, ".", "-")}-auth-api-vr"
   runtime = "cloudfront-js-2.0"
@@ -1383,13 +1376,15 @@ resource "aws_cloudfront_function" "auth_api_rewrite" {
 }
 
 data "aws_iam_policy_document" "auth_site_cloudfront_read" {
+  count = local.create_auth_site ? 1 : 0
+
   version = "2012-10-17"
 
   statement {
     sid       = "AllowCloudFrontRead"
     effect    = "Allow"
     actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.auth_site.arn}/*"]
+    resources = ["${aws_s3_bucket.auth_site[0].arn}/*"]
 
     principals {
       type        = "Service"
@@ -1399,14 +1394,16 @@ data "aws_iam_policy_document" "auth_site_cloudfront_read" {
     condition {
       test     = "StringEquals"
       variable = "AWS:SourceArn"
-      values   = [aws_cloudfront_distribution.auth_site.arn]
+      values   = [aws_cloudfront_distribution.auth_site[0].arn]
     }
   }
 }
 
 resource "aws_s3_bucket_policy" "auth_site" {
-  bucket = aws_s3_bucket.auth_site.id
-  policy = data.aws_iam_policy_document.auth_site_cloudfront_read.json
+  count = local.create_auth_site ? 1 : 0
+
+  bucket = aws_s3_bucket.auth_site[0].id
+  policy = data.aws_iam_policy_document.auth_site_cloudfront_read[0].json
 }
 
 # trivy:ignore:AVD-AWS-0011
@@ -1417,6 +1414,8 @@ resource "aws_cloudfront_distribution" "auth_site" {
   # checkov:skip=CKV2_AWS_47:No EC2 in this module
   # checkov:skip=CKV_AWS_68:WAF is caller-configurable via var.waf_web_acl_arn; not enforced at module level
   # checkov:skip=CKV_AWS_86:CloudFront access logging is caller-configurable; not enforced at module level
+  count = local.create_auth_site ? 1 : 0
+
   enabled             = true
   aliases             = [local.auth_site_domain]
   default_root_object = "index.html"
@@ -1427,9 +1426,9 @@ resource "aws_cloudfront_distribution" "auth_site" {
 
   # Default origin: S3 bucket serving the auth + admin SPA
   origin {
-    domain_name              = aws_s3_bucket.auth_site.bucket_regional_domain_name
+    domain_name              = aws_s3_bucket.auth_site[0].bucket_regional_domain_name
     origin_id                = "AuthSiteS3"
-    origin_access_control_id = aws_cloudfront_origin_access_control.auth_site.id
+    origin_access_control_id = aws_cloudfront_origin_access_control.auth_site[0].id
   }
 
   # Admin API origin: the admin SPA calls this same-origin via /api/v1.
@@ -1441,7 +1440,7 @@ resource "aws_cloudfront_distribution" "auth_site" {
   # anything else, closing off direct execute-api access that would
   # otherwise bypass CloudFront (and any WAF attached to this distribution).
   dynamic "origin" {
-    for_each = var.create_admin_panel ? [{
+    for_each = local.create_admin_panel ? [{
       invoke_url = one(module.admin_api[*].invoke_url)
       secret     = one(module.admin_api_authorizer[*].origin_verify_secret)
     }] : []
@@ -1468,7 +1467,7 @@ resource "aws_cloudfront_distribution" "auth_site" {
   # auth_api_authorizer instance (origin-check only, no JWT -- these routes
   # are intentionally public).
   dynamic "origin" {
-    for_each = var.create_admin_panel ? [{
+    for_each = local.create_public_auth_api ? [{
       invoke_url = one(module.auth_api[*].invoke_url)
       secret     = one(module.auth_api_authorizer[*].origin_verify_secret)
     }] : []
@@ -1508,7 +1507,7 @@ resource "aws_cloudfront_distribution" "auth_site" {
 
     function_association {
       event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.spa_viewer_request.arn
+      function_arn = aws_cloudfront_function.spa_viewer_request[0].arn
     }
   }
 
@@ -1517,7 +1516,7 @@ resource "aws_cloudfront_distribution" "auth_site" {
   # API. Cookies are forwarded both ways -- the flow reads/sets the HttpOnly
   # identify/AS session cookies.
   dynamic "ordered_cache_behavior" {
-    for_each = var.create_admin_panel ? [one(aws_cloudfront_function.auth_api_rewrite[*].arn)] : []
+    for_each = local.create_public_auth_api ? [one(aws_cloudfront_function.auth_api_rewrite[*].arn)] : []
     content {
       path_pattern           = "/api/v1/auth*"
       target_origin_id       = "AuthApi"
@@ -1548,7 +1547,7 @@ resource "aws_cloudfront_distribution" "auth_site" {
 
   # /api/v1/* behavior: proxy to the admin HTTP API (JWT-protected)
   dynamic "ordered_cache_behavior" {
-    for_each = var.create_admin_panel ? [one(aws_cloudfront_function.admin_api_rewrite[*].arn)] : []
+    for_each = local.create_admin_panel ? [one(aws_cloudfront_function.admin_api_rewrite[*].arn)] : []
     content {
       path_pattern           = "/api/v1/*"
       target_origin_id       = "AdminApi"
@@ -1593,25 +1592,29 @@ resource "aws_cloudfront_distribution" "auth_site" {
 }
 
 resource "aws_route53_record" "auth_site_a" {
+  count = local.create_auth_site ? 1 : 0
+
   zone_id = var.route53_zone_id
   name    = local.auth_site_domain
   type    = "A"
 
   alias {
-    name                   = aws_cloudfront_distribution.auth_site.domain_name
-    zone_id                = aws_cloudfront_distribution.auth_site.hosted_zone_id
+    name                   = aws_cloudfront_distribution.auth_site[0].domain_name
+    zone_id                = aws_cloudfront_distribution.auth_site[0].hosted_zone_id
     evaluate_target_health = false
   }
 }
 
 resource "aws_route53_record" "auth_site_aaaa" {
+  count = local.create_auth_site ? 1 : 0
+
   zone_id = var.route53_zone_id
   name    = local.auth_site_domain
   type    = "AAAA"
 
   alias {
-    name                   = aws_cloudfront_distribution.auth_site.domain_name
-    zone_id                = aws_cloudfront_distribution.auth_site.hosted_zone_id
+    name                   = aws_cloudfront_distribution.auth_site[0].domain_name
+    zone_id                = aws_cloudfront_distribution.auth_site[0].hosted_zone_id
     evaluate_target_health = false
   }
 }
