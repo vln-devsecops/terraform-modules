@@ -16,33 +16,20 @@ module "auth" {
   acm_certificate_arn     = "arn:aws:acm:us-east-1:123456789012:certificate/example"
 
   # everything below is optional, sanely defaulted
-  logo_base64 = filebase64("logo.png")
-  css         = ".label-customizable { font-weight: 400; }"
 }
 ```
 
-The `acm_certificate_arn` must cover both hostnames this module derives
-(`auth.<zone>` for the hosted UI, `admin.<zone>` for the bundled admin panel)
-— a wildcard cert from [`aws/acm_certificate`](../acm_certificate) is the
-simplest way to get that.
+The `acm_certificate_arn` must cover the single hostname this module derives
+(`auth.<zone>` by default, via `domain_prefix`) — a wildcard cert from
+[`aws/acm_certificate`](../acm_certificate) is the simplest way to get that.
 
 ## Branding
 
-`logo_base64` and `css` are the only overridable branding surface, and both
-default to a generic placeholder (a plain color scheme, no logo) — not any
-particular organization's real branding. Cognito's hosted-UI CSS
-customization only recognizes a fixed, AWS-defined set of selectors; `css`
-can target any of:
-
-`background-customizable`, `banner-customizable`, `idpButton-customizable`,
-`idpDescription-customizable`, `inputField-customizable`,
-`label-customizable`, `legalText-customizable`, `submitButton-customizable`,
-`textDescription-customizable`, `errorMessage-customizable`
-
-There's no way to add app-specific prefixed class names here (unlike the
-`ui-auth` React components in `node-vlinder-auth`, which do use normal
-app-controlled class names) — this is entirely AWS's fixed vocabulary for
-the hosted UI page.
+There is no Terraform-level branding surface. The auth site is a real
+first-party SPA (not Cognito's hosted UI), so branding lives in the SPA build
+itself — it reads its theme at runtime via `ui-auth`'s `theme.ts` mechanism
+(CSS custom properties) in `node-vlinder-auth`. Override the theme there
+rather than through this module.
 
 ## RBAC and tenancy
 
@@ -119,31 +106,52 @@ module "auth" {
 }
 ```
 
-## The bundled admin panel
+## The auth site (login + admin panel)
 
-On by default (`create_admin_panel = true`). Hosted at
-`admin.<zone>` via `aws/static_site`, with its own Cognito app client
-(no self-signup client-side — Cognito's `admin_create_user_config` is
+On by default (`create_admin_panel = true`). This module owns a single
+CloudFront distribution at `auth.<zone>` (S3 + Origin Access Control, no
+Cognito hosted UI involved) serving one SPA that covers both the public login
+screens (`/`) and the admin panel (`/admin`), authenticated through one
+Cognito app client (`auth_site`) shared by both. There's no self-signup
+client-side for the admin routes — Cognito's `admin_create_user_config` is
 pool-wide, so the real security boundary is the admin API's own privilege
-checks, not which client a caller authenticated through) and its own
-`aws/http_api` behind a JWT authorizer pointed at this module's own pool.
-Tenant-scoped callers (`:own` privileges) see only their own tenant's users;
-global-scoped callers (`:*` privileges) see across all tenants.
+checks, not which client or route a caller came in through. Tenant-scoped
+callers (`:own` privileges) see only their own tenant's users; global-scoped
+callers (`:*` privileges) see across all tenants.
+
+Two same-origin API behaviors on the same distribution, ordered so
+`/api/v1/auth*` never falls through to the admin API:
+
+- **`/api/v1/auth*`** → the public, unauthenticated auth API (identify,
+  password, signup, confirm, resend, forgot, reset). Cookie-session based
+  (`vln_auth_session`, `HttpOnly`), rate-limited per route via
+  `auth_api_throttling` — see `doc/auth-api-rate-limiting.md`.
+- **`/api/v1/*`** → the JWT-protected admin API. A CloudFront Function lifts
+  the session cookie into a `Bearer` header before forwarding, since the SPA
+  can't read an `HttpOnly` cookie to set the header itself — see
+  `doc/admin-api-csrf.md` for why that lift is safe. Both API origins are
+  also gated by a per-deployment `X-Origin-Verify` secret header, closing off
+  direct `execute-api` access that would bypass CloudFront (and any WAF
+  attached via `waf_web_acl_arn`).
 
 The SPA's *built* static assets are delivered by Terraform, so a single
 `terraform apply` yields a working site — there is no separate deploy step.
 The prebuilt bundle is published to GitHub Packages as
-`@vln-devsecops/auth-site` (from `node-vlinder-auth`), pinned in
-`site-build/package.json`, and installed at apply time — the same delivery
-mechanism as the Lambda. Terraform writes the per-deployment `config.json`
-(the auth-site app-client id and the multi-tenant flag — a `config.json`
-fetched at load time, since Vite env vars are baked in at build time and can't
-know these values yet) into the installed bundle with a `local_file` resource,
-then `aws s3 sync`s it to the S3 origin and invalidates CloudFront. SPA version
-bumps flow through Dependabot PRs on `site-build/package.json`.
+`@vln-devsecops/auth-site` (from `node-vlinder-auth`), pinned via
+`site-build/package-lock.json` (the lockfile, not the semver range in
+`package.json`, is what pins the resolved version), and installed at apply
+time with `npm ci` — the same delivery mechanism as the Lambdas. Terraform
+then writes the per-deployment `config.json` (the auth-site app-client id and
+the multi-tenant flag — fetched at load time, since Vite env vars are baked
+in at build time and can't know these values yet) into the installed bundle,
+`aws s3 sync`s it to the S3 origin, and invalidates CloudFront. SPA version
+bumps flow through Dependabot PRs against `site-build/package-lock.json`,
+exactly like the Lambdas. When `create_admin_panel` is `false` there is no
+auth backend for a SPA to call, so a placeholder `index.html` is served from
+the bucket instead.
 
 Because the SPA is installed and synced at apply time, the apply host needs
-Node + npm (already required for the Lambda) and the AWS CLI, plus a GitHub
+Node + npm (already required for the Lambdas) and the AWS CLI, plus a GitHub
 token with `read:packages` for the `@vln-devsecops` scope.
 
 ## Security defaults
@@ -156,8 +164,8 @@ every deployment:
 
 - `allow_self_signup = true` matches a normal SaaS signup flow. Set it to
   `false` for invite-only products, where `admin_create_user_config` (via
-  the admin panel's own privilege checks, not the client used to
-  authenticate — see below) becomes the only way to create users.
+  the admin API's own privilege checks, not the client or route used to
+  authenticate — see above) becomes the only way to create users.
 - `mfa_configuration = "OFF"` avoids adding enrollment friction to every
   consuming app by default, since not all of them carry data sensitive
   enough to warrant it. Set it to `"OPTIONAL"` or `"ON"` per environment
@@ -165,9 +173,10 @@ every deployment:
   pool-wide setting, so it can't be scoped to a subset of users.
 
 Both are per-deployment `module` block overrides, so a stricter posture for
-one app doesn't have to affect another. `advanced_security_mode` (see
-`doc/auth-api-rate-limiting.md`) and `password_policy` are the other two
-security-relevant knobs worth reviewing before a production launch.
+one app doesn't have to affect another. `advanced_security_mode`,
+`auth_api_throttling`, `waf_web_acl_arn` (see `doc/auth-api-rate-limiting.md`
+for the first two), and `password_policy` are the other security-relevant
+knobs worth reviewing before a production launch.
 
 ## Inputs
 
@@ -175,17 +184,20 @@ security-relevant knobs worth reviewing before a production launch.
 | --- | --- | --- |
 | `app_name` | Application name prefix. | `string` |
 | `deployment_environment` | Deployment environment suffix. | `string` |
-| `route53_zone_id` | Route53 hosted zone ID serving the derived hostnames. | `string` |
-| `acm_certificate_arn` | ACM certificate ARN in `us-east-1` covering both derived hostnames. | `string` |
-| `logo_base64` | Base64-encoded hosted-UI logo. Omitted (no custom logo) when null. | `string` |
-| `css` | Hosted-UI CSS override. Defaults to a built-in placeholder theme when null. | `string` |
-| `domain_prefix` | Hosted-UI domain prefix. Default `"auth"`. | `string` |
+| `route53_zone_id` | Route53 hosted zone ID serving the derived auth site hostname. | `string` |
+| `acm_certificate_arn` | ACM certificate ARN in `us-east-1` covering the derived auth site hostname. | `string` |
+| `cloudfront_price_class` | CloudFront price class for the auth site distribution. Default `"PriceClass_100"`. | `string` |
+| `waf_web_acl_arn` | ARN of a `us-east-1` WAF web ACL to associate with the auth site distribution. Default `null` (no WAF). | `string` |
+| `auth_site_force_destroy` | Whether the auth site S3 bucket can be force-destroyed while non-empty. Default `false`; live/ephemeral test suites should set `true`. | `bool` |
+| `user_pool_deletion_protection` | `"ACTIVE"` or `"INACTIVE"` for the Cognito user pool. Default `"ACTIVE"`; ephemeral test suites should set `"INACTIVE"`. | `string` |
+| `role_assignments_deletion_protection_enabled` | Whether to enable DynamoDB deletion protection on the role-assignments table. Default `true`; ephemeral test suites should set `false`. | `bool` |
+| `domain_prefix` | Auth site domain prefix: `"${domain_prefix}.<zone-name>"`. Default `"auth"`. | `string` |
 | `allow_self_signup` | Whether users can sign themselves up (pool-wide). Default `true`. | `bool` |
 | `mfa_configuration` | `OFF`, `OPTIONAL`, or `ON`. Default `"OFF"`. | `string` |
 | `password_policy` | Password policy overrides. Defaults match doxchange's proven config. | `object(...)` |
 | `advanced_security_mode` | Cognito threat protection: `AUDIT`, `ENFORCED`, or `OFF`. Default `"OFF"` -- AUDIT/ENFORCED require a paid Cognito feature plan (billed per MAU, same rate either mode). See `doc/auth-api-rate-limiting.md`. | `string` |
-| `auth_api_throttling` | Per-route throttle limits (`burst_limit`, a request count; `rate_limit`, requests/second) applied to the public `/auth/*` routes. Defaults `burst_limit=10`, `rate_limit=5` -- no extra AWS cost. See `doc/auth-api-rate-limiting.md`. | `object(...)` |
-| `clients` | Consumer app clients to create, keyed by logical name. Empty by default. | `map(object(...))` |
+| `auth_api_throttling` | Per-route throttle limits (`burst_limit`, a request count; `rate_limit`, requests/second) applied to the public `/api/v1/auth*` routes. Defaults `burst_limit=10`, `rate_limit=5` -- no extra AWS cost. See `doc/auth-api-rate-limiting.md`. | `object(...)` |
+| `clients` | Consumer app clients to create, keyed by logical name. The auth site's own client is always created separately and doesn't need an entry here. Empty by default. | `map(object(...))` |
 | `groups` | Optional Cognito groups (coarse, cosmetic relative to the DynamoDB privilege system). | `map(object(...))` |
 | `baseline_groups` | Group names every newly-confirmed user is added to. | `list(string)` |
 | `create_identity_pool` | Whether to create an identity pool for AWS credential vending. Default `false`. | `bool` |
@@ -195,8 +207,7 @@ security-relevant knobs worth reviewing before a production launch.
 | `tenants` | Tenant catalog, keyed by tenantId. Only meaningful in `"multi"` mode. | `map(object(...))` |
 | `roles` | Role catalog. Defaults to a minimal `member`/`admin` catalog. | `map(object(...))` |
 | `default_role_id` | Role every newly-confirmed user is assigned. Default `"member"`. | `string` |
-| `create_admin_panel` | Whether to provision the bundled admin panel. Default `true`. | `bool` |
-| `admin_panel_domain_prefix` | Admin panel domain prefix. Default `"admin"`. | `string` |
+| `create_admin_panel` | Whether to provision the bundled auth site (login + admin panel) and its APIs. Default `true`. | `bool` |
 | `tags` | Additional tags to apply to created resources. | `map(string)` |
 
 ## Outputs
@@ -206,18 +217,21 @@ security-relevant knobs worth reviewing before a production launch.
 | `user_pool_id` | Cognito user pool ID. |
 | `user_pool_arn` | Cognito user pool ARN. |
 | `issuer_url` | OIDC issuer URL — wire into your own app's `http_api` `jwt_authorizers`. |
-| `hosted_ui_domain` | Cognito hosted-UI custom domain. |
-| `hosted_ui_url` | Base HTTPS URL for the hosted UI. |
+| `auth_domain` | Auth site domain (CloudFront alias for the login and admin SPA). |
+| `auth_url` | Base HTTPS URL for the auth site (login SPA). |
 | `client_ids` | Map of consumer app client IDs, keyed as in `var.clients`. |
 | `identity_pool_id` | Identity pool ID, or null when `create_identity_pool` is false. |
-| `admin_panel_url` | Base HTTPS URL for the bundled admin panel, or null when disabled. |
+| `admin_panel_url` | URL for the admin panel within the auth site (`<auth_url>/admin`), or null when disabled. |
 | `admin_api_invoke_url` | Invoke URL for the bundled admin API, or null when disabled. |
-| `admin_panel_client_id` | Cognito app client ID for the admin panel, or null when disabled. |
+| `auth_site_client_id` | Cognito app client ID for the bundled auth site, or null when disabled. |
+| `auth_site_bucket_name` | S3 bucket name for the auth site SPA static assets. |
+| `role_assignments_table_name` | DynamoDB table name backing user role assignments. |
 
 ## Testing
 
 - `tests/*.tftest.hcl` — mock-provider contract tests, one file per slice
-  (identity, RBAC/tenancy, Lambdas, admin API, admin panel hosting).
+  (identity, RBAC/tenancy, Lambdas, auth API, admin API, auth site
+  distribution/routing, auth site deploy).
 - `examples/aws/vlinder_auth/` — a runnable example.
 - `tests/aws/vlinder_auth/run.sh` — a provider-backed suite exercising a real
   deployment end to end.
