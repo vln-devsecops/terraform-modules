@@ -926,6 +926,7 @@ module "admin_api" {
 resource "aws_secretsmanager_secret" "auth_session_signing_key" {
   count = var.create_admin_panel ? 1 : 0
 
+  # checkov:skip=CKV2_AWS_57:Rotation is handled by time_rotating + the local-exec reseed below (see comment above), not aws_secretsmanager_secret_rotation
   name       = "${var.app_name}-${var.deployment_environment}-auth-session-signing-key"
   kms_key_id = aws_kms_key.this.id
 
