@@ -1,0 +1,29 @@
+on:
+  push:
+    branches: [main]        # or the repo's actual default branch — check first
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Both jobs below already declare their own scoped-down permissions; this
+# top-level block just makes the workflow's default explicit (none) instead
+# of implicit, satisfying checkov's CKV2_GHA_1 (it flags any workflow with
+# no top-level `permissions:` regardless of per-job overrides).
+permissions: {}
+
+jobs:
+  baseline:
+    if: github.event_name == 'push'
+    uses: vln-devsecops/actions-sast-sonarqube/.github/workflows/sonar-baseline.yml@v1
+    permissions:
+      contents: read
+    with:
+      baseline-branches: '["main"]'
+
+  pr-scan:
+    if: github.event_name == 'pull_request'
+    uses: vln-devsecops/actions-sast-sonarqube/.github/workflows/sonar-pr.yml@v1
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+      actions: read
