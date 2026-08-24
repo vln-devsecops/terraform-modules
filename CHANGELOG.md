@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/vln-devsecops/terraform-modules/compare/v1.0.0...v1.1.0) (2026-08-24)
+
+
+### Features
+
+* **http_api:** support a Lambda REQUEST authorizer (CUSTOM routes) ([f1447e5](https://github.com/vln-devsecops/terraform-modules/commit/f1447e52658e894c1aea54c900f735e8261cda94))
+
 ## [1.0.0](https://github.com/vln-devsecops/terraform-modules/compare/v0.19.1...v1.0.0) (2026-08-21)
 
 
