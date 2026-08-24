@@ -57,3 +57,8 @@ output "role_assignments_table_name" {
   description = "DynamoDB table name backing user role assignments. Exposed for test/ops tooling that needs to seed or inspect role assignments directly (e.g. bootstrapping the first admin) -- normal app code should go through the admin API, not this table, wherever possible."
   value       = module.user_role_assignments.table_name
 }
+
+output "verification_codes_table_name" {
+  description = "DynamoDB table name backing signup/password-reset verification codes, when auth_profile provisions the public auth API (\"full\" or \"auth_api\"); null in \"identity_only\". Exposed for test/ops tooling that needs to read a code directly (e.g. e2e's real-happy-path coverage)."
+  value       = one(module.verification_codes[*].table_name)
+}

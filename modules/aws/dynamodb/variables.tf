@@ -117,3 +117,9 @@ variable "short_deployment_region" {
   description = "Short region identifier used in the table name, such as useast1 or euwest1."
   type        = string
 }
+
+variable "ttl_attribute" {
+  description = "Optional attribute name to enable as the table's TTL attribute (epoch seconds). Null (the default) leaves TTL disabled."
+  type        = string
+  default     = null
+}

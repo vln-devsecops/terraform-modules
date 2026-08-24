@@ -82,6 +82,14 @@ resource "aws_dynamodb_table" "this" {
     }
   }
 
+  dynamic "ttl" {
+    for_each = var.ttl_attribute == null ? [] : [var.ttl_attribute]
+    content {
+      attribute_name = ttl.value
+      enabled        = true
+    }
+  }
+
   dynamic "attribute" {
     for_each = {
       for attr in var.attributes : attr.name => attr
