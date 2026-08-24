@@ -169,13 +169,32 @@ variable "identity_pool_authenticated_role_policy_arns" {
 }
 
 variable "ses_configuration" {
-  description = "Optional SES identity to send verification/invite emails through (branded from-address, better deliverability). When null, Cognito sends via its own built-in email service (COGNITO_DEFAULT) -- zero configuration, works immediately, lower send limits and an Amazon-owned from-address."
+  description = "SES identity to send verification/invite emails through (branded from-address, better deliverability). Required whenever auth_profile provisions the public auth API (\"full\" or \"auth_api\") -- auth_api generates and emails its own signup/password-reset codes via SES, with no zero-config fallback the way COGNITO_DEFAULT was for Cognito's own built-in email. Ignored (and may be left null) in the \"identity_only\" profile, where Cognito's own built-in email service (COGNITO_DEFAULT) still backs the separate, unused-by-default email-change re-verification flow."
   type = object({
     configuration_set_name = string
     source_arn             = string
     from_email_address     = string
   })
   default = null
+}
+
+check "ses_configuration_required_for_public_auth_api" {
+  assert {
+    condition     = !local.create_public_auth_api || var.ses_configuration != null
+    error_message = "ses_configuration must be set whenever auth_profile provisions the public auth API (\"full\" or \"auth_api\")."
+  }
+}
+
+variable "verification_code_ttl_seconds" {
+  description = "How long a generated signup/password-reset verification code remains valid, in seconds. Also becomes the DynamoDB table's TTL for that row, so an expired code is eventually reaped rather than kept around indefinitely."
+  type        = number
+  default     = 600
+}
+
+variable "verification_code_max_attempts" {
+  description = "How many incorrect verification-code submissions are allowed before the code is locked out and a new one must be requested."
+  type        = number
+  default     = 5
 }
 
 # --- RBAC and tenancy (optional; single-tenant default) --------------------

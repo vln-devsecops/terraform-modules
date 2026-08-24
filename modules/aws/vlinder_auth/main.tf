@@ -159,6 +159,7 @@ resource "aws_cognito_user_pool" "this" {
   }
 
   lambda_config {
+    pre_sign_up       = aws_lambda_function.pre_sign_up.arn
     post_confirmation = aws_lambda_function.post_confirmation.arn
     pre_token_generation_config {
       lambda_arn     = aws_lambda_function.pre_token_generation.arn
@@ -474,10 +475,11 @@ module "user_role_assignments" {
 # To install locally before running terraform validate/test:
 #   npm ci --prefix modules/aws/vlinder_auth/lambda-build
 #
-# The build pipeline (esbuild) produces four self-contained CJS bundles at
-# dist/post-confirmation/handler.js, dist/pre-token-generation/handler.js,
-# dist/admin-api/handler.js, and dist/auth-api/handler.js -- each with all
-# dependencies (including the shared/ helpers) inlined. dist/ also contains a
+# The build pipeline (esbuild) produces five self-contained CJS bundles at
+# dist/pre-sign-up/handler.js, dist/post-confirmation/handler.js,
+# dist/pre-token-generation/handler.js, dist/admin-api/handler.js, and
+# dist/auth-api/handler.js -- each with all dependencies (including the
+# shared/ helpers) inlined. dist/ also contains a
 # package.json marking the directory as "type": "commonjs" so Node loads the
 # .js files as CJS regardless of the source package's ESM type setting. The
 # zip includes the full dist/ tree; handler references use the subdirectory
@@ -522,6 +524,53 @@ data "aws_iam_policy_document" "lambda_assume_role" {
       identifiers = ["lambda.amazonaws.com"]
     }
   }
+}
+
+resource "aws_iam_role" "pre_sign_up" {
+  name               = "${var.app_name}-${var.deployment_environment}-pre-sign-up"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "pre_sign_up_logging" {
+  role       = aws_iam_role.pre_sign_up.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# No other permissions: the handler unconditionally sets
+# autoConfirmUser/autoVerifyEmail on the event and returns it -- it never
+# touches DynamoDB, Cognito's admin API, or anything else.
+resource "aws_lambda_function" "pre_sign_up" {
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
+  # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_173:No environment block at all (this handler takes no env vars), so there's nothing for Checkov to find encrypted -- kms_key_arn below still encrypts the function's own configuration at rest, same as every other Lambda in this module
+  function_name    = "${var.app_name}-${var.deployment_environment}-pre-sign-up"
+  role             = aws_iam_role.pre_sign_up.arn
+  handler          = "pre-sign-up/handler.handler"
+  runtime          = "nodejs22.x"
+  timeout          = 5
+  publish          = true
+  kms_key_arn      = aws_kms_key.this.arn
+  filename         = data.archive_file.lambda_package.output_path
+  source_code_hash = data.archive_file.lambda_package.output_base64sha256
+
+  tracing_config {
+    mode = "Active"
+  }
+
+  tags = local.common_tags
+
+  depends_on = [aws_iam_role_policy_attachment.pre_sign_up_logging]
+}
+
+resource "aws_lambda_permission" "pre_sign_up" {
+  statement_id  = "AllowCognitoInvokePreSignUp"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.pre_sign_up.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = aws_cognito_user_pool.this.arn
 }
 
 resource "aws_iam_role" "post_confirmation" {
@@ -971,6 +1020,31 @@ resource "null_resource" "auth_session_signing_key_seed" {
   depends_on = [aws_secretsmanager_secret.auth_session_signing_key]
 }
 
+# Signup and password-reset codes, generated/verified by auth_api itself
+# rather than Cognito's own email-verification mechanism (see node-vlinder-
+# auth/doc/plan-auth-chrome-and-verification-codes.md). Short-TTL and
+# reproducible (a fresh code can always be requested), unlike
+# user_role_assignments, so deletion protection is off here rather than
+# wired to its own consumer-facing variable.
+module "verification_codes" {
+  count  = local.create_public_auth_api ? 1 : 0
+  source = "../dynamodb"
+
+  app_name                    = var.app_name
+  deployment_environment      = var.deployment_environment
+  function                    = "auth-verification-codes"
+  short_deployment_region     = local.short_region
+  deletion_protection_enabled = false
+  ttl_attribute               = "expiresAt"
+
+  attributes = [
+    { name = "email", type = "S" },
+    { name = "purpose", type = "S" },
+  ]
+  hash_key  = "email"
+  range_key = "purpose"
+}
+
 resource "aws_iam_role" "auth_api" {
   count = local.create_public_auth_api ? 1 : 0
 
@@ -999,14 +1073,17 @@ resource "aws_iam_policy" "auth_api" {
         Action = [
           # Login (server-side password verification).
           "cognito-idp:AdminInitiateAuth",
-          # Self-service registration + recovery, wrapped server-side so the SPA
-          # speaks only /api/v1/auth. These are Cognito's user-facing operations;
-          # signed SDK calls from the Lambda are subject to IAM.
+          # Registration + password reset, wrapped server-side so the SPA
+          # speaks only /api/v1/auth. Cognito's own code-generating/consuming
+          # operations (ConfirmSignUp, ResendConfirmationCode, ForgotPassword,
+          # ConfirmForgotPassword) are gone -- auth_api owns generating,
+          # storing, verifying, and emailing its own codes (verification_codes
+          # below) instead; PreSignUp auto-confirms every account so
+          # AdminGetUser/AdminSetUserPassword are all Cognito needs to do once
+          # a code checks out.
           "cognito-idp:SignUp",
-          "cognito-idp:ConfirmSignUp",
-          "cognito-idp:ResendConfirmationCode",
-          "cognito-idp:ForgotPassword",
-          "cognito-idp:ConfirmForgotPassword",
+          "cognito-idp:AdminGetUser",
+          "cognito-idp:AdminSetUserPassword",
         ]
         Resource = [aws_cognito_user_pool.this.arn]
       },
@@ -1015,20 +1092,37 @@ resource "aws_iam_policy" "auth_api" {
         Action   = ["secretsmanager:GetSecretValue"]
         Resource = [one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)]
       },
+      {
+        Effect = "Allow"
+        Action = ["ses:SendEmail"]
+        # try() rather than a direct reference: this whole statement only
+        # matters once the lifecycle precondition below (on aws_lambda_function
+        # .auth_api) is satisfied -- a direct reference would hard-error the
+        # plan on a null ses_configuration before that friendlier precondition
+        # message ever gets a chance to show.
+        Resource = [try(var.ses_configuration.source_arn, "")]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+        ]
+        Resource = [one(module.verification_codes[*].table_arn)]
+      },
       # This function's own environment variables are encrypted with
-      # aws_kms_key.this (kms_key_arn below), same as every other Lambda in
-      # this module -- but unlike those, auth_api never touches DynamoDB, so
-      # it never picked up the kms:Decrypt grant that the DynamoDB-touching
-      # Lambdas' policies carry incidentally (see e.g. pre_token_generation's
-      # identical statement). Without it the Lambda service can't decrypt
-      # this function's own env vars at invoke time, and this function can't
-      # decrypt the CMK-encrypted session-signing secret above either --
-      # both were a real gap, not something this signing-key change
-      # introduces.
+      # aws_kms_key.this, same as every other Lambda in this module, and it
+      # also needs kms:Decrypt on the verification_codes table's own CMK
+      # (DynamoDB requires the *caller* to hold KMS permissions on the
+      # table's key -- see the matching statement on
+      # aws_iam_policy.pre_token_generation for the full rationale) plus the
+      # CMK-encrypted session-signing secret above.
       {
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
-        Resource = [aws_kms_key.this.arn]
+        Resource = [aws_kms_key.this.arn, one(module.verification_codes[*].kms_key_arn)]
       },
     ]
   })
@@ -1066,9 +1160,13 @@ resource "aws_lambda_function" "auth_api" {
 
   environment {
     variables = {
-      USER_POOL_ID                  = aws_cognito_user_pool.this.id
-      AUTH_CLIENT_ID                = one(aws_cognito_user_pool_client.auth_site[*].id)
-      SESSION_SIGNING_KEY_SECRET_ID = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
+      USER_POOL_ID                   = aws_cognito_user_pool.this.id
+      AUTH_CLIENT_ID                 = one(aws_cognito_user_pool_client.auth_site[*].id)
+      SESSION_SIGNING_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
+      VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
+      VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
+      VERIFICATION_CODE_MAX_ATTEMPTS = tostring(var.verification_code_max_attempts)
+      SES_FROM_ADDRESS               = try(var.ses_configuration.from_email_address, "")
     }
   }
 
@@ -1078,6 +1176,13 @@ resource "aws_lambda_function" "auth_api" {
     aws_iam_role_policy_attachment.auth_api_logging,
     null_resource.auth_session_signing_key_seed,
   ]
+
+  lifecycle {
+    precondition {
+      condition     = var.ses_configuration != null
+      error_message = "ses_configuration must be set whenever auth_profile provisions the public auth API (\"full\" or \"auth_api\") -- SES has no zero-config fallback the way COGNITO_DEFAULT was for Cognito's own built-in email."
+    }
+  }
 }
 
 locals {
