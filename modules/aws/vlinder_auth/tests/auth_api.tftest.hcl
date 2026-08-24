@@ -38,6 +38,15 @@ mock_provider "aws" {
     }
   }
 
+  # auth_api's own IAM policy interpolates this secret's ARN; without a
+  # plan-time default the whole jsonencoded policy string becomes unknown
+  # and the strcontains assertions below can't evaluate.
+  mock_resource "aws_secretsmanager_secret" {
+    defaults = {
+      arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:placeholder"
+    }
+  }
+
   mock_resource "aws_lambda_function" {
     defaults = {
       arn = "arn:aws:lambda:us-east-1:123456789012:function:placeholder"
@@ -95,6 +104,15 @@ variables {
   deployment_environment = "prod"
   route53_zone_id        = "Z1234567890"
   acm_certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+
+  # Required whenever auth_profile provisions the public auth API (the
+  # default, "full") -- see the ses_configuration_required_for_public_auth_api
+  # check block.
+  ses_configuration = {
+    configuration_set_name = "cfgset"
+    source_arn             = "arn:aws:ses:us-east-1:123456789012:identity/example.com"
+    from_email_address     = "no-reply@example.com"
+  }
 }
 
 run "auth_api_routes_are_throttled_with_the_default_limits" {
@@ -204,4 +222,103 @@ run "auth_api_routes_are_guarded_by_an_origin_check_only_authorizer" {
     ])
     error_message = "Every public /auth/* route must still have authorization_type CUSTOM, wired to the origin-check authorizer."
   }
+}
+
+run "auth_api_role_no_longer_calls_cognitos_own_code_flows" {
+  command = plan
+
+  # auth_api now generates/stores/verifies/emails its own signup and
+  # password-reset codes (see node-vlinder-auth/doc/
+  # plan-auth-chrome-and-verification-codes.md) instead of relying on
+  # Cognito's built-in email verification.
+  assert {
+    condition     = !strcontains(aws_iam_policy.auth_api[0].policy, "ConfirmSignUp")
+    error_message = "auth_api's role should no longer call Cognito's ConfirmSignUp -- confirmation now validates against verification_codes."
+  }
+
+  assert {
+    condition     = !strcontains(aws_iam_policy.auth_api[0].policy, "ResendConfirmationCode")
+    error_message = "auth_api's role should no longer call Cognito's ResendConfirmationCode -- resend now re-sends the app-owned code."
+  }
+
+  assert {
+    condition     = !strcontains(aws_iam_policy.auth_api[0].policy, "ForgotPassword")
+    error_message = "auth_api's role should no longer call Cognito's ForgotPassword/ConfirmForgotPassword -- password reset now validates against verification_codes then calls AdminSetUserPassword."
+  }
+}
+
+run "auth_api_role_owns_verification_codes_end_to_end" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, "cognito-idp:AdminGetUser") && strcontains(aws_iam_policy.auth_api[0].policy, "cognito-idp:AdminSetUserPassword")
+    error_message = "auth_api's role should be able to look up accounts and set passwords directly via the admin API now that it owns verification."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, "ses:SendEmail")
+    error_message = "auth_api's role should be able to send verification/reset emails via SES."
+  }
+
+  assert {
+    condition = (
+      strcontains(aws_iam_policy.auth_api[0].policy, "dynamodb:GetItem") &&
+      strcontains(aws_iam_policy.auth_api[0].policy, "dynamodb:PutItem") &&
+      strcontains(aws_iam_policy.auth_api[0].policy, "dynamodb:UpdateItem") &&
+      strcontains(aws_iam_policy.auth_api[0].policy, "dynamodb:DeleteItem")
+    )
+    error_message = "auth_api's role should have full CRUD on the verification_codes table."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, "kms:Decrypt")
+    error_message = "auth_api's role should be able to decrypt the verification_codes table's CMK, same as every other table-touching Lambda in this module."
+  }
+}
+
+run "auth_api_env_vars_carry_verification_code_config" {
+  command = plan
+
+  assert {
+    condition = (
+      one(aws_lambda_function.auth_api[0].environment).variables["VERIFICATION_CODES_TABLE_NAME"] == one(module.verification_codes[*].table_name) &&
+      one(aws_lambda_function.auth_api[0].environment).variables["VERIFICATION_CODE_TTL_SECONDS"] == "600" &&
+      one(aws_lambda_function.auth_api[0].environment).variables["VERIFICATION_CODE_MAX_ATTEMPTS"] == "5" &&
+      one(aws_lambda_function.auth_api[0].environment).variables["SES_FROM_ADDRESS"] == "no-reply@example.com"
+    )
+    error_message = "auth_api's environment variables should match lambda-src's expected verification-code config keys and defaults."
+  }
+}
+
+run "verification_code_ttl_and_max_attempts_overrides_are_plumbed_through" {
+  command = plan
+
+  variables {
+    verification_code_ttl_seconds  = 300
+    verification_code_max_attempts = 3
+  }
+
+  assert {
+    condition = (
+      one(aws_lambda_function.auth_api[0].environment).variables["VERIFICATION_CODE_TTL_SECONDS"] == "300" &&
+      one(aws_lambda_function.auth_api[0].environment).variables["VERIFICATION_CODE_MAX_ATTEMPTS"] == "3"
+    )
+    error_message = "verification_code_ttl_seconds/verification_code_max_attempts overrides should reach auth_api's environment as strings."
+  }
+}
+
+run "ses_configuration_is_required_whenever_the_public_auth_api_is_provisioned" {
+  command = plan
+
+  # SES has no zero-config fallback the way COGNITO_DEFAULT was for Cognito's
+  # own built-in email -- misconfiguration must fail at plan time, not on the
+  # Lambda's first invocation.
+  variables {
+    ses_configuration = null
+  }
+
+  expect_failures = [
+    check.ses_configuration_required_for_public_auth_api,
+    aws_lambda_function.auth_api,
+  ]
 }

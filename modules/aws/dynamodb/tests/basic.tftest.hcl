@@ -127,6 +127,72 @@ run "global_secondary_index_uses_key_schema" {
   }
 }
 
+run "ttl_is_disabled_by_default" {
+  command = plan
+
+  variables {
+    app_name                = "sampleapp"
+    deployment_environment  = "dev"
+    short_deployment_region = "useast1"
+    function                = "events"
+    hash_key                = "pk"
+    range_key               = "sk"
+    kms_key_policy_json     = jsonencode({ Version = "2012-10-17", Statement = [] })
+    attributes = [
+      {
+        name = "pk"
+        type = "S"
+      },
+      {
+        name = "sk"
+        type = "S"
+      },
+    ]
+    global_secondary_indices = []
+    local_secondary_indices  = []
+  }
+
+  assert {
+    condition     = length(aws_dynamodb_table.this.ttl) == 0
+    error_message = "TTL should be disabled when ttl_attribute is left at its default (null)."
+  }
+}
+
+run "ttl_attribute_enables_ttl_on_that_attribute" {
+  command = plan
+
+  variables {
+    app_name                = "sampleapp"
+    deployment_environment  = "dev"
+    short_deployment_region = "useast1"
+    function                = "events"
+    hash_key                = "pk"
+    range_key               = "sk"
+    kms_key_policy_json     = jsonencode({ Version = "2012-10-17", Statement = [] })
+    ttl_attribute           = "expiresAt"
+    attributes = [
+      {
+        name = "pk"
+        type = "S"
+      },
+      {
+        name = "sk"
+        type = "S"
+      },
+    ]
+    global_secondary_indices = []
+    local_secondary_indices  = []
+  }
+
+  assert {
+    condition = alltrue([
+      for ttl in aws_dynamodb_table.this.ttl :
+      ttl.attribute_name == "expiresAt" && ttl.enabled == true
+    ])
+    error_message = "Setting ttl_attribute should enable TTL on that attribute."
+  }
+}
+
 run "optional_iam_user_attachments_are_created" {
   command = plan
 

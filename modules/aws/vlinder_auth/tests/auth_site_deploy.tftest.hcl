@@ -95,6 +95,15 @@ variables {
   deployment_environment = "prod"
   route53_zone_id        = "Z1234567890"
   acm_certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+
+  # Required whenever auth_profile provisions the public auth API (the
+  # default, "full") -- see the ses_configuration_required_for_public_auth_api
+  # check block.
+  ses_configuration = {
+    configuration_set_name = "cfgset"
+    source_arn             = "arn:aws:ses:us-east-1:123456789012:identity/example.com"
+    from_email_address     = "no-reply@example.com"
+  }
 }
 
 run "spa_is_deployed_and_configured_by_terraform_when_admin_panel_enabled" {

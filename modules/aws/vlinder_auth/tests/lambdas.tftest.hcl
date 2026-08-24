@@ -90,26 +90,55 @@ variables {
   deployment_environment = "prod"
   route53_zone_id        = "Z1234567890"
   acm_certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+
+  # Required whenever auth_profile provisions the public auth API (the
+  # default, "full") -- see the ses_configuration_required_for_public_auth_api
+  # check block.
+  ses_configuration = {
+    configuration_set_name = "cfgset"
+    source_arn             = "arn:aws:ses:us-east-1:123456789012:identity/example.com"
+    from_email_address     = "no-reply@example.com"
+  }
 }
 
-run "four_lambda_functions_are_created_with_the_expected_runtime" {
+run "five_lambda_functions_are_created_with_the_expected_runtime" {
   command = plan
 
   assert {
     condition = (
+      aws_lambda_function.pre_sign_up.runtime == "nodejs22.x" &&
       aws_lambda_function.post_confirmation.runtime == "nodejs22.x" &&
       aws_lambda_function.pre_token_generation.runtime == "nodejs22.x" &&
       aws_lambda_function.admin_api[0].runtime == "nodejs22.x" &&
       aws_lambda_function.auth_api[0].runtime == "nodejs22.x"
     )
-    error_message = "All four Lambdas should run on nodejs22.x."
+    error_message = "All five Lambdas should run on nodejs22.x."
+  }
+}
+
+run "pre_sign_up_lambda_is_wired_into_lambda_config_with_no_extra_permissions" {
+  command = plan
+
+  assert {
+    condition     = one(aws_cognito_user_pool.this.lambda_config).pre_sign_up == aws_lambda_function.pre_sign_up.arn
+    error_message = "pre_sign_up should be wired into the user pool's lambda_config."
+  }
+
+  assert {
+    condition     = aws_lambda_function.pre_sign_up.handler == "pre-sign-up/handler.handler"
+    error_message = "pre_sign_up handler must be 'pre-sign-up/handler.handler' to match dist layout."
+  }
+
+  assert {
+    condition     = length(aws_lambda_function.pre_sign_up.environment) == 0
+    error_message = "pre_sign_up should carry no environment variables -- it's a pure stateless auto-confirm trigger, unlike the other Cognito trigger Lambdas."
   }
 }
 
 run "lambda_handler_paths_match_dist_layout" {
   command = plan
 
-  # The package builds to dist/{post-confirmation,pre-token-generation,admin-api,shared}/
+  # The package builds to dist/{pre-sign-up,post-confirmation,pre-token-generation,admin-api,shared}/
   # handler.js in each subdirectory. The shared/ directory sits at the zip root
   # (dist/ is zipped whole), so all three handlers can resolve ../shared/* at
   # runtime. Handler = "<subdir>/<file-without-ext>.<exported-fn>".
@@ -129,11 +158,16 @@ run "lambda_handler_paths_match_dist_layout" {
   }
 }
 
-run "all_four_lambdas_share_the_same_zip" {
+run "all_five_lambdas_share_the_same_zip" {
   command = plan
 
   # One zip for the full dist/ tree (shared/ present at root) rather than
   # per-handler zips (which would leave shared/ out of each package).
+  assert {
+    condition     = aws_lambda_function.pre_sign_up.filename == aws_lambda_function.post_confirmation.filename
+    error_message = "pre_sign_up must share the same zip as the other Lambdas so dist/shared/ is available."
+  }
+
   assert {
     condition     = aws_lambda_function.post_confirmation.filename == aws_lambda_function.pre_token_generation.filename
     error_message = "post_confirmation and pre_token_generation must share one zip so dist/shared/ is available to both."
