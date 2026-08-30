@@ -43,10 +43,11 @@ locals {
   effective_placeholder_index_html = var.placeholder_index_html != null ? var.placeholder_index_html : local.default_placeholder_index_html
   effective_placeholder_404_html   = var.placeholder_404_html != null ? var.placeholder_404_html : local.default_placeholder_404_html
   viewer_request_code = templatefile("${path.module}/templates/viewer_request.js.tftpl", {
-    basic_auth_enabled = var.basic_auth_enabled ? "true" : "false"
-    basic_auth_header  = var.basic_auth_enabled ? base64encode("${var.basic_auth_username}:${var.basic_auth_password}") : ""
-    basic_auth_realm   = var.basic_auth_realm
-    enable_pretty_urls = var.enable_pretty_urls ? "true" : "false"
+    basic_auth_enabled    = var.basic_auth_enabled ? "true" : "false"
+    basic_auth_header     = var.basic_auth_enabled ? base64encode("${var.basic_auth_username}:${var.basic_auth_password}") : ""
+    basic_auth_realm      = var.basic_auth_realm
+    enable_pretty_urls    = var.enable_pretty_urls ? "true" : "false"
+    pretty_url_exceptions = jsonencode(var.pretty_url_exceptions)
   })
   effective_custom_error_responses = var.custom_error_responses != null ? var.custom_error_responses : (
     var.enable_spa_fallback ? [

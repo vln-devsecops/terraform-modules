@@ -64,6 +64,17 @@ variable "enable_pretty_urls" {
   default     = true
 }
 
+variable "pretty_url_exceptions" {
+  description = "Exact request URIs (e.g. \"/LICENSE\") to exclude from the enable_pretty_urls rewrite, for extensionless static files that are not pretty-url routes."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for uri in var.pretty_url_exceptions : startswith(uri, "/")])
+    error_message = "pretty_url_exceptions entries must be absolute URIs starting with \"/\", e.g. \"/LICENSE\"."
+  }
+}
+
 variable "basic_auth_enabled" {
   description = "Whether to require HTTP basic auth at the CloudFront viewer-request edge."
   type        = bool

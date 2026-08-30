@@ -103,6 +103,42 @@ run "optional_basic_auth_is_rendered_at_edge" {
   }
 }
 
+run "pretty_url_exceptions_default_to_empty_list" {
+  command = plan
+
+  variables {
+    site_name           = "test-pretty-url-defaults.devsecops.vlinder.ca"
+    route53_zone_id     = "Z1234567890"
+    acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+  }
+
+  assert {
+    condition     = strcontains(aws_cloudfront_function.viewer_request.code, "prettyUrlExceptions = []")
+    error_message = "pretty_url_exceptions should default to an empty list rendered at the edge."
+  }
+}
+
+run "pretty_url_exceptions_are_rendered_and_checked_before_the_extension_heuristic" {
+  command = plan
+
+  variables {
+    site_name             = "test-pretty-url-exceptions.devsecops.vlinder.ca"
+    route53_zone_id       = "Z1234567890"
+    acm_certificate_arn   = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    pretty_url_exceptions = ["/LICENSE", "/Dockerfile"]
+  }
+
+  assert {
+    condition     = strcontains(aws_cloudfront_function.viewer_request.code, "prettyUrlExceptions = [\"/LICENSE\",\"/Dockerfile\"]")
+    error_message = "Viewer-request function should embed the configured pretty_url_exceptions list."
+  }
+
+  assert {
+    condition     = can(regex("(?s)prettyUrlExceptions.*uri\\.includes\\('\\.'\\)", aws_cloudfront_function.viewer_request.code))
+    error_message = "pretty_url_exceptions must be checked before the extensionless-URI heuristic so exceptions win."
+  }
+}
+
 run "explicit_custom_error_responses_override_spa_fallback" {
   command = plan
 

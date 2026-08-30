@@ -30,6 +30,7 @@ the S3 bucket.
 | `force_destroy`           | Whether to allow the site bucket to be force-destroyed.                                                                                                            | `bool`        |
 | `enable_spa_fallback`     | Whether to rewrite 403 and 404 responses to `index.html`.                                                                                                          | `bool`        |
 | `enable_pretty_urls`      | Whether to rewrite extensionless viewer requests to `index.html` paths.                                                                                            | `bool`        |
+| `pretty_url_exceptions`   | Exact request URIs (e.g. `["/LICENSE"]`) excluded from the `enable_pretty_urls` rewrite. See "Pretty URLs and extensionless static files" below.                    | `list(string)` |
 | `basic_auth_enabled`      | Whether to require HTTP basic auth at the CloudFront viewer-request edge.                                                                                          | `bool`        |
 | `basic_auth_username`     | Basic-auth username when `basic_auth_enabled` is true.                                                                                                             | `string`      |
 | `basic_auth_password`     | Basic-auth password when `basic_auth_enabled` is true.                                                                                                             | `string`      |
@@ -70,6 +71,38 @@ For low-sensitivity internal dashboards, the recommended default is to keep
 later enable basic auth, remember that those credentials will be rendered into
 the CloudFront function code and therefore remain part of the deployed
 configuration and Terraform state.
+
+## Pretty URLs and extensionless static files
+
+When `enable_pretty_urls = true` (the default), the viewer-request function
+rewrites any request URI containing no `.` to `<uri>/index.html`, so that
+routes like `/about` resolve to `/about/index.html`. This heuristic can't tell
+a pretty-url route apart from a genuinely extensionless static file at the
+site root — `LICENSE`, `Dockerfile`, `Makefile`, and similar — so a request
+for `/LICENSE` gets rewritten to `/LICENSE/index.html`, which doesn't exist,
+and the OAC-protected S3 origin returns a `403` (masking what should be a
+`404`) instead of serving the real file.
+
+CloudFront Functions can't make network calls, so a "try the literal path
+first, fall back to `index.html` only on a real 404" approach isn't possible
+at the viewer-request trigger point; that would require an `origin-response`
+Lambda@Edge handler (see below), which is a much bigger lift than most sites
+need just for this.
+
+If your site serves an extensionless static file at its root, list its exact
+request URI in `pretty_url_exceptions` so it's excluded from the rewrite:
+
+```hcl
+module "static_site" {
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/static_site?ref=v0.19.1"
+
+  site_name           = "dashboard-4f8k2m1q9z.devsecops.vlinder.ca"
+  route53_zone_id     = "Z1234567890"
+  acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+
+  pretty_url_exceptions = ["/LICENSE", "/LICENSE-CONTENT"]
+}
+```
 
 ## Origin-response Lambda@Edge (opt-in)
 

@@ -20,13 +20,17 @@ function handler(event) {
   }
 
   if (${enable_pretty_urls}) {
-    if (uri.endsWith('/')) {
-      request.uri = uri + 'index.html';
-      return request;
-    }
+    var prettyUrlExceptions = ${pretty_url_exceptions};
 
-    if (!uri.includes('.')) {
-      request.uri = uri + '/index.html';
+    if (prettyUrlExceptions.indexOf(uri) === -1) {
+      if (uri.endsWith('/')) {
+        request.uri = uri + 'index.html';
+        return request;
+      }
+
+      if (!uri.includes('.')) {
+        request.uri = uri + '/index.html';
+      }
     }
   }
 
