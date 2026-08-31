@@ -113,6 +113,21 @@ resource "aws_cloudfront_origin_access_control" "site" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_response_headers_policy" "noindex" {
+  count = var.enable_noindex ? 1 : 0
+
+  name    = "${replace(var.site_name, ".", "-")}-noindex"
+  comment = "Belt-and-suspenders: discourage search indexing of this site."
+
+  custom_headers_config {
+    items {
+      header   = "X-Robots-Tag"
+      value    = "noindex, nofollow"
+      override = true
+    }
+  }
+}
+
 resource "aws_cloudfront_function" "viewer_request" {
   name    = "${replace(var.site_name, ".", "-")}-viewer-request"
   runtime = "cloudfront-js-2.0"
@@ -177,7 +192,7 @@ resource "aws_cloudfront_distribution" "site" {
     target_origin_id           = "StaticSite"
     viewer_protocol_policy     = "redirect-to-https"
     compress                   = true
-    response_headers_policy_id = var.response_headers_policy_id
+    response_headers_policy_id = var.enable_noindex ? aws_cloudfront_response_headers_policy.noindex[0].id : var.response_headers_policy_id
 
     allowed_methods = ["GET", "HEAD", "OPTIONS"]
     cached_methods  = ["GET", "HEAD", "OPTIONS"]
