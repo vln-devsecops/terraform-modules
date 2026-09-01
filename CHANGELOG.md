@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/vln-devsecops/terraform-modules/compare/v1.1.0...v1.2.0) (2026-09-01)
+
+
+### Features
+
+* **static_site:** add first-class enable_noindex parameter ([#252](https://github.com/vln-devsecops/terraform-modules/issues/252)) ([24867a1](https://github.com/vln-devsecops/terraform-modules/commit/24867a1486a1cc02732bfcfced09d4db708e77f7))
+
+
+### Bug Fixes
+
+* **static_site:** add pretty_url_exceptions to protect extensionless static files ([#250](https://github.com/vln-devsecops/terraform-modules/issues/250)) ([d786cd9](https://github.com/vln-devsecops/terraform-modules/commit/d786cd988786d30325d0bb52c354f3803acf0ff7))
+
 ## [1.1.0](https://github.com/vln-devsecops/terraform-modules/compare/v1.0.0...v1.1.0) (2026-08-24)
 
 
