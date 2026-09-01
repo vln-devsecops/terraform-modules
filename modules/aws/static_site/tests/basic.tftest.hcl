@@ -7,6 +7,12 @@ mock_provider "aws" {
     }
   }
 
+  mock_resource "aws_cloudfront_response_headers_policy" {
+    defaults = {
+      id = "e1234567-abcd-1234-abcd-1234567890ab"
+    }
+  }
+
   mock_resource "aws_cloudfront_distribution" {
     defaults = {
       id                             = "EDFDVBD632BHDS5"
@@ -199,6 +205,52 @@ run "waf_acl_and_access_logging_are_applied" {
     condition     = one(aws_cloudfront_distribution.site.default_cache_behavior).response_headers_policy_id == "67f7725c-6f97-4210-82d7-5512b31e9d03"
     error_message = "Response headers policy ID should be applied to the default cache behavior."
   }
+}
+
+run "enable_noindex_attaches_generated_response_headers_policy" {
+  command = plan
+
+  variables {
+    site_name           = "test-noindex.devsecops.vlinder.ca"
+    route53_zone_id     = "Z1234567890"
+    acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    enable_noindex      = true
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_response_headers_policy.noindex) == 1
+    error_message = "enable_noindex should create a response headers policy."
+  }
+
+  assert {
+    condition = one(one(aws_cloudfront_response_headers_policy.noindex[0].custom_headers_config).items) == {
+      header   = "X-Robots-Tag"
+      value    = "noindex, nofollow"
+      override = true
+    }
+    error_message = "The generated response headers policy should set X-Robots-Tag: noindex, nofollow."
+  }
+
+  assert {
+    condition     = one(aws_cloudfront_distribution.site.default_cache_behavior).response_headers_policy_id == aws_cloudfront_response_headers_policy.noindex[0].id
+    error_message = "The generated noindex response headers policy should be attached to the default cache behavior."
+  }
+}
+
+run "enable_noindex_and_response_headers_policy_id_are_mutually_exclusive" {
+  command = plan
+
+  variables {
+    site_name                  = "test-noindex-conflict.devsecops.vlinder.ca"
+    route53_zone_id            = "Z1234567890"
+    acm_certificate_arn        = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+    enable_noindex             = true
+    response_headers_policy_id = "67f7725c-6f97-4210-82d7-5512b31e9d03"
+  }
+
+  expect_failures = [
+    var.enable_noindex,
+  ]
 }
 
 run "custom_placeholder_html_is_applied" {

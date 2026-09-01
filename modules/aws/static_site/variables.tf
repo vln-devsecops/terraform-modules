@@ -141,9 +141,20 @@ variable "custom_error_responses" {
 }
 
 variable "response_headers_policy_id" {
-  description = "CloudFront managed or custom response headers policy ID to attach to the default cache behavior."
+  description = "CloudFront managed or custom response headers policy ID to attach to the default cache behavior. Mutually exclusive with enable_noindex."
   type        = string
   default     = null
+}
+
+variable "enable_noindex" {
+  description = "Whether to attach an X-Robots-Tag: noindex, nofollow response header to the default cache behavior, e.g. for non-prod sites with an unguessable hostname. Mutually exclusive with response_headers_policy_id."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.enable_noindex || var.response_headers_policy_id == null
+    error_message = "enable_noindex and response_headers_policy_id are mutually exclusive: a caller-supplied response headers policy already has full control over headers, so add the X-Robots-Tag header to it directly instead."
+  }
 }
 
 variable "origin_response_lambda_qualified_arn" {

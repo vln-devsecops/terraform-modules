@@ -40,6 +40,8 @@ the S3 bucket.
 | `placeholder_index_html`  | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string`      |
 | `placeholder_404_html`    | Optional custom HTML content used only for initial placeholder seeding; later content changes are ignored so site deployment workflows can manage object contents. | `string`      |
 | `origin_response_lambda_qualified_arn` | Qualified ARN of a Lambda@Edge function to associate with the `origin-response` event on the default cache behavior. See "Origin-response Lambda@Edge (opt-in)" below. | `string`      |
+| `response_headers_policy_id` | CloudFront managed or custom response headers policy ID to attach to the default cache behavior. Mutually exclusive with `enable_noindex`. | `string` |
+| `enable_noindex`          | Whether to attach an `X-Robots-Tag: noindex, nofollow` response header, e.g. for non-prod sites with an unguessable hostname. Mutually exclusive with `response_headers_policy_id`. | `bool` |
 
 ## Outputs
 
@@ -103,6 +105,29 @@ module "static_site" {
   pretty_url_exceptions = ["/LICENSE", "/LICENSE-CONTENT"]
 }
 ```
+
+## Discouraging search indexing (opt-in)
+
+Non-prod and preview sites are often reachable at an unguessable hostname
+rather than behind real access control. That's belt-and-suspenders, not a
+robots policy, so set `enable_noindex = true` to also attach an
+`X-Robots-Tag: noindex, nofollow` response header:
+
+```hcl
+module "static_site" {
+  source = "git::https://github.com/vln-devsecops/terraform-modules.git//modules/aws/static_site?ref=v1.2.0"
+
+  site_name           = "dashboard-4f8k2m1q9z.devsecops.vlinder.ca"
+  route53_zone_id     = "Z1234567890"
+  acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/example"
+
+  enable_noindex = true
+}
+```
+
+This is mutually exclusive with `response_headers_policy_id`: if you're
+already supplying your own response headers policy, add the same header to
+it directly instead.
 
 ## Origin-response Lambda@Edge (opt-in)
 
