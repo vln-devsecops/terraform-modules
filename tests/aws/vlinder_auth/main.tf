@@ -66,7 +66,7 @@ resource "aws_acm_certificate_validation" "auth" {
 module "vlinder_auth" {
   source = "../../../modules/aws/vlinder_auth"
 
-  app_name               = "cogauth-${var.name_suffix}"
+  app_name               = "vlinderauth-${var.name_suffix}"
   deployment_environment = "test"
   route53_zone_id        = var.route53_zone_id
   acm_certificate_arn    = aws_acm_certificate_validation.auth.certificate_arn

@@ -12,11 +12,10 @@ cleanup() {
 
 trap 'cleanup "$?"' EXIT
 
-# Prefer the VLINDER_AUTH_TEST_* variables; fall back to the old
-# COGNITO_AUTH_TEST_* names (and then the mail suite's) so the suite keeps
-# working until the GitHub repo/environment variables are renamed.
-base_domain="${VLINDER_AUTH_TEST_BASE_DOMAIN:-${COGNITO_AUTH_TEST_BASE_DOMAIN:-${MAIL_TEST_BASE_DOMAIN:-}}}"
-route53_zone_id="${VLINDER_AUTH_TEST_ROUTE53_ZONE_ID:-${COGNITO_AUTH_TEST_ROUTE53_ZONE_ID:-${MAIL_TEST_ROUTE53_ZONE_ID:-}}}"
+# Prefer the VLINDER_AUTH_TEST_* variables; fall back to the mail suite's
+# shared test domain if a dedicated one isn't configured.
+base_domain="${VLINDER_AUTH_TEST_BASE_DOMAIN:-${MAIL_TEST_BASE_DOMAIN:-}}"
+route53_zone_id="${VLINDER_AUTH_TEST_ROUTE53_ZONE_ID:-${MAIL_TEST_ROUTE53_ZONE_ID:-}}"
 
 require_env AWS_ACCESS_KEY_ID "AWS_ACCESS_KEY_ID must be set to run the vlinder_auth live suite."
 require_env AWS_SECRET_ACCESS_KEY "AWS_SECRET_ACCESS_KEY must be set to run the vlinder_auth live suite."
