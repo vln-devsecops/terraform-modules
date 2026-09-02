@@ -18,7 +18,6 @@ The suite:
 Set one of these variable pairs before running:
 
 - `VLINDER_AUTH_TEST_BASE_DOMAIN` and `VLINDER_AUTH_TEST_ROUTE53_ZONE_ID`
-  (the old `COGNITO_AUTH_TEST_*` names still work as a fallback)
 - or reuse `MAIL_TEST_BASE_DOMAIN` and `MAIL_TEST_ROUTE53_ZONE_ID`
 
 The second form is convenient when the shared delegated mail-test domain is

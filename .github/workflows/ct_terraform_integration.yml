@@ -186,12 +186,8 @@ jobs:
           AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
           MAIL_TEST_BASE_DOMAIN: ${{ vars.MAIL_TEST_BASE_DOMAIN }}
           MAIL_TEST_ROUTE53_ZONE_ID: ${{ vars.MAIL_TEST_ROUTE53_ZONE_ID }}
-          # New names; the old COGNITO_AUTH_TEST_* are passed too so run.sh's
-          # fallback keeps working until the GitHub repo/env variables are renamed.
           VLINDER_AUTH_TEST_BASE_DOMAIN: ${{ vars.VLINDER_AUTH_TEST_BASE_DOMAIN }}
           VLINDER_AUTH_TEST_ROUTE53_ZONE_ID: ${{ vars.VLINDER_AUTH_TEST_ROUTE53_ZONE_ID }}
-          COGNITO_AUTH_TEST_BASE_DOMAIN: ${{ vars.COGNITO_AUTH_TEST_BASE_DOMAIN }}
-          COGNITO_AUTH_TEST_ROUTE53_ZONE_ID: ${{ vars.COGNITO_AUTH_TEST_ROUTE53_ZONE_ID }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TF_LIVE_SUITE_CAPTURE_TFSTATE: "1"
           SUITE_PATH: ${{ matrix.suite }}
