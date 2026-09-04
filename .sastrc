@@ -1,0 +1,10 @@
+# vlinder_auth deliberately leaves S3/CloudFront access logging
+# caller-configurable rather than enforced at module level -- same
+# convention as every other module in this repo, already documented via
+# the checkov:skip=CKV_AWS_18 / checkov:skip=CKV_AWS_86 comments at the
+# flagged resources in main.tf. Quench the equivalent SonarQube rule here
+# so it doesn't relitigate a decision already made and documented.
+ignore:
+  - rule: "terraform:S6258"
+    paths:
+      - "modules/aws/vlinder_auth/main.tf"

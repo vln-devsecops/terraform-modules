@@ -1,0 +1,64 @@
+output "user_pool_id" {
+  description = "Cognito user pool ID."
+  value       = aws_cognito_user_pool.this.id
+}
+
+output "user_pool_arn" {
+  description = "Cognito user pool ARN."
+  value       = aws_cognito_user_pool.this.arn
+}
+
+output "issuer_url" {
+  description = "OIDC issuer URL for this user pool. Wire this into your own app's http_api jwt_authorizers to authorize against tokens this module issues."
+  value       = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${aws_cognito_user_pool.this.id}"
+}
+
+output "auth_domain" {
+  description = "Auth site domain (CloudFront alias for the login and admin SPA), when auth_profile is \"full\" or \"auth_api\"; null in \"identity_only\" (no site is provisioned)."
+  value       = local.create_auth_site ? local.auth_site_domain : null
+}
+
+output "auth_url" {
+  description = "Base HTTPS URL for the auth site (login SPA), when auth_profile is \"full\" or \"auth_api\"; null in \"identity_only\"."
+  value       = local.create_auth_site ? "https://${local.auth_site_domain}" : null
+}
+
+output "client_ids" {
+  description = "Map of consumer app client IDs, keyed the same as var.clients."
+  value       = { for key, client in aws_cognito_user_pool_client.consumer : key => client.id }
+}
+
+output "identity_pool_id" {
+  description = "Cognito identity pool ID, when create_identity_pool is true; null otherwise."
+  value       = one(aws_cognito_identity_pool.this[*].id)
+}
+
+output "admin_panel_url" {
+  description = "URL for the admin panel within the auth site, when auth_profile is \"full\"; null otherwise."
+  value       = local.create_admin_panel ? "https://${local.auth_site_domain}/admin" : null
+}
+
+output "admin_api_invoke_url" {
+  description = "Invoke URL for the bundled admin API, when auth_profile is \"full\"; null otherwise. A deploy pipeline injects this into the auth site's runtime config."
+  value       = one(module.admin_api[*].invoke_url)
+}
+
+output "auth_site_client_id" {
+  description = "Cognito app client ID for the bundled auth site, when auth_profile is \"full\" or \"auth_api\"; null in \"identity_only\". The module writes this into the SPA's runtime config.json itself; exposed for test/ops tooling."
+  value       = one(aws_cognito_user_pool_client.auth_site[*].id)
+}
+
+output "auth_site_bucket_name" {
+  description = "S3 bucket name for the auth site SPA static assets, when auth_profile is \"full\" or \"auth_api\"; null in \"identity_only\" (no bucket is provisioned). The module deploys the SPA here itself; exposed for test/ops tooling that needs to inspect the bucket."
+  value       = one(aws_s3_bucket.auth_site[*].id)
+}
+
+output "role_assignments_table_name" {
+  description = "DynamoDB table name backing user role assignments. Exposed for test/ops tooling that needs to seed or inspect role assignments directly (e.g. bootstrapping the first admin) -- normal app code should go through the admin API, not this table, wherever possible."
+  value       = module.user_role_assignments.table_name
+}
+
+output "verification_codes_table_name" {
+  description = "DynamoDB table name backing signup/password-reset verification codes, when auth_profile provisions the public auth API (\"full\" or \"auth_api\"); null in \"identity_only\". Exposed for test/ops tooling that needs to read a code directly (e.g. e2e's real-happy-path coverage)."
+  value       = one(module.verification_codes[*].table_name)
+}

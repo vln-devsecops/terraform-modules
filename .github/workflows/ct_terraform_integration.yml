@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -141,6 +142,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # node-vlinder-auth is a separate repo (the auth-site SPA source and
+      # the BDD e2e suite live there, not here) -- public as of 2026-07-13,
+      # so no cross-repo PAT is needed to check it out or to read the
+      # auth-lambda package it publishes.
+      - name: Checkout node-vlinder-auth (auth-site SPA + e2e suite, vlinder_auth suite only)
+        if: contains(matrix.suite, 'vlinder_auth')
+        uses: actions/checkout@v5
+        with:
+          repository: vln-devsecops/node-vlinder-auth
+          path: node-vlinder-auth
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -174,6 +186,9 @@ jobs:
           AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
           MAIL_TEST_BASE_DOMAIN: ${{ vars.MAIL_TEST_BASE_DOMAIN }}
           MAIL_TEST_ROUTE53_ZONE_ID: ${{ vars.MAIL_TEST_ROUTE53_ZONE_ID }}
+          VLINDER_AUTH_TEST_BASE_DOMAIN: ${{ vars.VLINDER_AUTH_TEST_BASE_DOMAIN }}
+          VLINDER_AUTH_TEST_ROUTE53_ZONE_ID: ${{ vars.VLINDER_AUTH_TEST_ROUTE53_ZONE_ID }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TF_LIVE_SUITE_CAPTURE_TFSTATE: "1"
           SUITE_PATH: ${{ matrix.suite }}
         run: |
@@ -263,4 +278,6 @@ jobs:
             echo "Set `TERRAFORM_MODULES_INTEGRATION_ROLE_ARN` and `AWS_REGION` as repository or environment variables so GitHub Actions can assume the role via OIDC."
             echo
             echo "The mail suite also needs `MAIL_TEST_BASE_DOMAIN` and `MAIL_TEST_ROUTE53_ZONE_ID` as repository or environment variables."
+            echo
+            echo "The vlinder_auth suite also needs `VLINDER_AUTH_TEST_BASE_DOMAIN` and `VLINDER_AUTH_TEST_ROUTE53_ZONE_ID` as repository or environment variables."
           } >> "${GITHUB_STEP_SUMMARY}"
