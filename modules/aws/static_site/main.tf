@@ -57,6 +57,7 @@ locals {
   )
 }
 
+# trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket" "site" {
   # checkov:skip=CKV_AWS_18:Access logging optional for public OAC-protected content; caller provides log bucket when needed
   # checkov:skip=CKV_AWS_21:Versioning not required for OAC-protected public content that has no sensitive data
@@ -64,7 +65,6 @@ resource "aws_s3_bucket" "site" {
   # checkov:skip=CKV_AWS_145:Cross-region replication not required for OAC-protected public content
   # checkov:skip=CKV2_AWS_61:S3 deletion protection by policy for OAC-protected public bucket
   # checkov:skip=CKV2_AWS_62:Event notifications not required for OAC-protected public content
-  # trivy:ignore:AVD-AWS-0132
   bucket        = local.actual_bucket_name
   force_destroy = var.force_destroy
   tags          = merge(local.common_tags, { rg = "storage" })

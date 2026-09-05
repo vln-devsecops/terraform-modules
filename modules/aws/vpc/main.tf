@@ -29,9 +29,9 @@ resource "aws_vpc" "this" {
   })
 }
 
+# trivy:ignore:AVD-AWS-0164
 resource "aws_subnet" "public" {
   # checkov:skip=CKV_AWS_130:Public subnets intentionally auto-assign public IPs for runner and public-access workloads
-  # trivy:ignore:AVD-AWS-0164
   count = length(var.public_subnet_cidrs)
 
   vpc_id            = aws_vpc.this.id
