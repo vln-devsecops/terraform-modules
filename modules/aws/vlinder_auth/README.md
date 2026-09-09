@@ -48,20 +48,27 @@ roles = {
     tenant_scope = "tenant"
   }
   tenant-admin = {
-    privileges   = ["admin:users:read:own", "admin:users:write:own", "admin:roles:read"]
+    privileges   = ["read:admin/users", "write:admin/users", "read:admin/roles"]
     tenant_scope = "tenant"
   }
   super-admin = {
-    privileges   = ["admin:users:read:*", "admin:users:write:*", "admin:roles:read"]
+    privileges   = ["read:*:admin/users", "write:*:admin/users", "read:admin/roles"]
     tenant_scope = "global"
   }
 }
 ```
 
-Only the resolved **privileges** — never the role name — land in the issued
-JWT (as a `permissions` claim, alongside `tenantId`). A role's `tenant_scope`
-of `"global"` is what makes it a super-admin-style role (cross-tenant); both
-scopes are the same mechanism.
+Privileges are `verb:tenant-id:resource-glob`. A `"tenant"`-scoped role's
+privileges are written in tenant-irrelevant form (the concrete tenant is
+bound at token-issuance time, from whichever tenant the role assignment
+lives in) — a `"global"`-scoped role's privileges are written already
+tenant-wildcard (`verb:*:resource-glob`), since they aren't meant to be
+confined to one tenant; that's what makes `"global"` the super-admin-style
+scope (cross-tenant), both being the same matching mechanism. Only the
+resolved **privileges** — never the role name — land in the issued JWT, as
+a standard space-separated OAuth `scope` claim (not a comma-joined
+`permissions` claim), alongside a `tenantId` claim kept for display purposes
+only.
 
 `tenancy_mode` defaults to `"single"`: exactly one implicit tenant, no
 tenant table exposed for CRUD, no tenant switcher in the admin panel. Set it
@@ -98,11 +105,11 @@ module "auth" {
       tenant_scope = "tenant"
     }
     tenant-admin = {
-      privileges   = ["admin:users:read:own", "admin:users:write:own", "admin:roles:read"]
+      privileges   = ["read:admin/users", "write:admin/users", "read:admin/roles"]
       tenant_scope = "tenant"
     }
     super-admin = {
-      privileges   = ["admin:users:read:*", "admin:users:write:*", "admin:roles:read"]
+      privileges   = ["read:*:admin/users", "write:*:admin/users", "read:admin/roles"]
       tenant_scope = "global"
     }
   }
@@ -138,9 +145,9 @@ authenticated through one Cognito app client (`auth_site`) shared by both.
 There's no self-signup client-side for the admin routes — Cognito's
 `admin_create_user_config` is pool-wide, so the real security boundary is the
 admin API's own privilege checks, not which client or route a caller came in
-through. Tenant-scoped callers (`:own` privileges) see only their own
-tenant's users; global-scoped callers (`:*` privileges) see across all
-tenants.
+through. Tenant-scoped callers (a grant naming one tenant-id) see only that
+tenant's users; global-scoped callers (a `verb:*:resource-glob` grant) see
+across all tenants.
 
 Two same-origin API behaviors on the same distribution, ordered so
 `/api/v1/auth*` never falls through to the admin API:

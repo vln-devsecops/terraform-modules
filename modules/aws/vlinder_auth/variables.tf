@@ -231,7 +231,7 @@ variable "roles" {
       tenant_scope = "tenant"
     }
     admin = {
-      privileges   = ["admin:users:read:own", "admin:users:write:own", "admin:roles:read"]
+      privileges   = ["read:admin/users", "write:admin/users", "read:admin/roles"]
       tenant_scope = "tenant"
     }
   }

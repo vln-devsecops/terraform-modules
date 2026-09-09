@@ -95,7 +95,7 @@ run "default_role_catalog_is_seeded" {
   }
 
   assert {
-    condition     = jsondecode(aws_dynamodb_table_item.roles["admin"].item).privileges.L[0].S == "admin:users:read:own"
+    condition     = jsondecode(aws_dynamodb_table_item.roles["admin"].item).privileges.L[0].S == "read:admin/users"
     error_message = "The admin role's privileges should be seeded verbatim."
   }
 }
@@ -106,11 +106,11 @@ run "custom_role_catalog_overrides_the_default" {
   variables {
     roles = {
       viewer = {
-        privileges   = ["reports:read:own"]
+        privileges   = ["read:reports"]
         tenant_scope = "tenant"
       }
       super_admin = {
-        privileges   = ["admin:users:read:*", "admin:users:write:*", "admin:roles:read"]
+        privileges   = ["read:*:admin/users", "write:*:admin/users", "read:admin/roles"]
         tenant_scope = "global"
       }
     }

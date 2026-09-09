@@ -1290,7 +1290,7 @@ module "auth_api" {
 #                        A CloudFront Function rewrites extensionless paths to
 #                        /index.html so client-side routing (React Router) works.
 #                        Admin screens live at /admin (client-side route-guarded
-#                        on the caller's JWT permissions claim), not a separate
+#                        on the caller's JWT scope claim), not a separate
 #                        hostname -- no separate CloudFront distribution needed.
 #
 #   /api/v1/auth* behavior → Custom origin: the public auth HTTP API (the
