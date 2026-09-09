@@ -64,11 +64,14 @@ bound at token-issuance time, from whichever tenant the role assignment
 lives in) — a `"global"`-scoped role's privileges are written already
 tenant-wildcard (`verb:*:resource-glob`), since they aren't meant to be
 confined to one tenant; that's what makes `"global"` the super-admin-style
-scope (cross-tenant), both being the same matching mechanism. Only the
-resolved **privileges** — never the role name — land in the issued JWT, as
-a standard space-separated OAuth `scope` claim (not a comma-joined
-`permissions` claim), alongside a `tenantId` claim kept for display purposes
-only.
+scope (cross-tenant), both being the same matching mechanism. A tenant
+wildcard reaches only the tenants the caller is actually authenticated
+against, never every tenant that exists — a user can be logged in on more
+than one tenant at once, and the issued JWT carries a space-separated
+`tenants` claim naming exactly which. Only the resolved **privileges** —
+never the role name — land in the issued JWT, as a standard
+space-separated OAuth `scope` claim (not a comma-joined `permissions`
+claim, and not a singular `tenantId`).
 
 `tenancy_mode` defaults to `"single"`: exactly one implicit tenant, no
 tenant table exposed for CRUD, no tenant switcher in the admin panel. Set it
