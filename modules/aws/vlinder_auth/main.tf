@@ -925,7 +925,7 @@ module "admin_api_authorizer" {
 
   jwt_issuer_url     = local.admin_api_issuer_url
   jwt_audience       = one(aws_cognito_user_pool_client.auth_site[*].id)
-  jwt_forward_claims = ["tenantId", "permissions", "scope"]
+  jwt_forward_claims = ["tenants", "scope"]
 
   kms_key_arn = aws_kms_key.this.arn
 

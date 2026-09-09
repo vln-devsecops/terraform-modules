@@ -138,6 +138,18 @@ run "admin_api_is_provisioned_via_the_shared_http_api_module_with_a_lambda_autho
     ])
     error_message = "Every admin API route must have authorization_type CUSTOM, wired to the shared Lambda authorizer."
   }
+
+  # The claims the authorizer forwards are exactly what admin-api/authz.ts's
+  # extractCallerContext reads: "tenants" (space-delimited authenticated
+  # tenants) and "scope" (space-delimited privileges). Forwarding the wrong
+  # names here is silent and total: extractCallerContext falls back to an
+  # empty list for anything not forwarded, so every tenant-scoped admin
+  # action 403s with no error pointing at the real cause -- exactly the
+  # failure class already hit once with the Terraform-seeded role catalog.
+  assert {
+    condition     = toset(module.admin_api_authorizer[0].jwt_forward_claims) == toset(["tenants", "scope"])
+    error_message = "The admin API authorizer must forward exactly the \"tenants\" and \"scope\" claims -- lambda-src's extractCallerContext reads no others."
+  }
 }
 
 run "admin_api_is_omitted_for_the_auth_api_profile" {
