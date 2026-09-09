@@ -32,7 +32,7 @@ module "certificate" {
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
+| ------ | ------------- | ------ | --------- | :--------: |
 | `domain_name` | Primary domain name for the certificate. | `string` | — | yes |
 | `subject_alt_names` | Subject alternative names to include in the certificate. | `list(string)` | `[]` | no |
 | `route53_zone_id` | Route 53 hosted zone ID used for DNS validation records. | `string` | — | yes |
@@ -43,7 +43,7 @@ module "certificate" {
 ## Outputs
 
 | Name | Description |
-|------|-------------|
+| ------ | ------------- |
 | `certificate_arn` | ARN of the validated ACM certificate. |
 | `certificate_domain_name` | Primary domain name of the certificate. |
 | `validation_record_fqdns` | FQDNs of the DNS validation records created in Route 53. |
