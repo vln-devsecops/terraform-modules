@@ -127,7 +127,7 @@ steps:
 
 ### AWS side
 
-**First apply — bootstrap credentials**
+#### First apply — bootstrap credentials
 
 There is a chicken-and-egg problem: you need AWS credentials to create the OIDC
 provider and roles, but those roles are what you want instead of long-lived credentials.
@@ -136,7 +136,7 @@ For the initial setup, run `terraform apply` locally (or in CI) using an existin
 user or admin credentials. Once the roles exist, update your workflows to use OIDC and
 then you can stop using the static credentials.
 
-**Minimum IAM permissions for the applying identity**
+#### Minimum IAM permissions for the applying identity
 
 The identity running `terraform apply` needs at least:
 
@@ -187,7 +187,7 @@ are not prefixed, use `"arn:aws:iam::*:role/*"` but prefer a prefix for least pr
 
 ### GitHub side
 
-**`permissions: id-token: write` is required**
+#### `permissions: id-token: write` is required
 
 GitHub does not mint an OIDC token for a workflow job unless the job (or the calling
 workflow) explicitly requests it:
@@ -201,14 +201,14 @@ permissions:
 If this is omitted the `aws-actions/configure-aws-credentials` step will fail with an
 error like `Credentials could not be loaded` or a 401 from the OIDC token endpoint.
 
-**Org-level OIDC token issuance**
+#### Org-level OIDC token issuance
 
 Some GitHub organisations disable OIDC token issuance for Actions by policy. If your
 workflows fail with an error about OIDC tokens being disabled, an organisation owner
 needs to allow it under **Settings → Actions → General → Allow GitHub Actions to
 request OIDC tokens**.
 
-**Subject claim customisation (recommended for production)**
+#### Subject claim customisation (recommended for production)
 
 By default GitHub's `sub` claim format depends on the workflow context:
 

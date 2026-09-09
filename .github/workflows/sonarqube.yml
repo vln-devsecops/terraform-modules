@@ -1,3 +1,4 @@
+---
 on:
   push:
     branches: [main]        # or the repo's actual default branch — check first
