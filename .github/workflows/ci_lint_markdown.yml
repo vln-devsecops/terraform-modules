@@ -12,6 +12,9 @@ on:
       - '**.md'
       - '.markdownlint.json'
 
+permissions:
+  contents: read
+
 jobs:
   markdownlint:
     runs-on: ubuntu-latest

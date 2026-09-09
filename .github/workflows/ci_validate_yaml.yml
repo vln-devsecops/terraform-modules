@@ -13,6 +13,9 @@ on:
       - '**.yaml'
       - '.yamllint.yml'
 
+permissions:
+  contents: read
+
 jobs:
   yamllint:
     runs-on: ubuntu-latest
