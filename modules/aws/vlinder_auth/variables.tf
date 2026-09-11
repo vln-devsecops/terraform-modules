@@ -142,8 +142,16 @@ variable "clients" {
   default = {}
 
   validation {
-    condition = var.tenancy_mode != "multi" || alltrue([
-      for client in values(var.clients) : client.tenant_id != null && contains(keys(var.tenants), client.tenant_id)
+    # && and || don't short-circuit in Terraform (unlike ?:), so a plain
+    # `tenancy_mode != "multi" || (tenant_id != null && contains(...))` would
+    # still evaluate contains() with a null tenant_id in "single" mode and
+    # error out at plan time rather than skip the check. Nested ?: avoids
+    # evaluating either check on a branch that shouldn't run.
+    condition = alltrue([
+      for client in values(var.clients) :
+      var.tenancy_mode != "multi" ? true : (
+        client.tenant_id != null ? contains(keys(var.tenants), client.tenant_id) : false
+      )
     ])
     error_message = "In tenancy_mode \"multi\", every client must set tenant_id to a key of var.tenants."
   }

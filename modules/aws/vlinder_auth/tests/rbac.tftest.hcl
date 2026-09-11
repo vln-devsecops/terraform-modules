@@ -256,6 +256,31 @@ run "domain_pinned_to_an_identity_provider_is_seeded_under_its_tenant" {
   }
 }
 
+run "domain_pin_is_lowercased_to_match_the_lookups_own_normalization" {
+  command = plan
+
+  variables {
+    tenancy_mode = "multi"
+    tenants = {
+      acme-corp = {
+        name = "Acme Corp"
+        identity_providers = {
+          "Acme.COM" = "okta-acme"
+        }
+      }
+    }
+  }
+
+  assert {
+    # resolveIdentityProviderForDomain does email.split('@')[1]?.toLowerCase()
+    # before its GetItem -- a mixed-case domain here must seed the same
+    # lowercased sk, or the pin silently never matches and the tenant's
+    # defaults apply instead of enforcing the pinned IdP.
+    condition     = jsondecode(aws_dynamodb_table_item.tenant_domain_providers["acme-corp#acme.com"].item).sk.S == "DOMAIN#acme.com"
+    error_message = "A mixed-case domain in identity_providers should be lowercased before seeding the DOMAIN# key."
+  }
+}
+
 run "user_role_assignments_table_is_composed_from_the_shared_dynamodb_module" {
   command = plan
 

@@ -507,10 +507,15 @@ resource "aws_dynamodb_table_item" "auth_site_tenant_client" {
 # rather than a global domain GSI, since the tenant is already resolved (via
 # client_id) by the time this is looked up -- see resolveIdentityProviderForDomain.
 locals {
+  # Lowercased here to match resolveIdentityProviderForDomain's own
+  # `email.split('@')[1]?.toLowerCase()` -- the DOMAIN# key must agree with
+  # what the lookup actually queries, or a mixed-case domain in var.tenants
+  # (e.g. "Acme.com") would silently never match and fall through to the
+  # tenant's defaults instead of enforcing the pinned IdP.
   tenant_domain_providers = merge([
     for tenant_id, tenant in local.effective_tenants : {
       for domain, provider_id in coalesce(tenant.identity_providers, {}) :
-      "${tenant_id}#${domain}" => { tenant_id = tenant_id, domain = domain, provider_id = provider_id }
+      "${tenant_id}#${lower(domain)}" => { tenant_id = tenant_id, domain = lower(domain), provider_id = provider_id }
     }
   ]...)
 }
