@@ -15,10 +15,17 @@ locals {
 
   # Single-tenant mode (the default) never exposes tenant CRUD to the consumer;
   # it seeds exactly one implicit tenant so the RBAC mechanism still has a
-  # tenantId to key role assignments on.
-  effective_tenants = var.tenancy_mode == "multi" ? var.tenants : {
-    default = { name = "Default", email_domain = null }
+  # tenantId to key role assignments on. Either way, the auth application
+  # gets its own reserved tenant ("auth") so auth.<zone> reached without a
+  # client_id -- the admin panel, and later a user profile -- still resolves
+  # to a real tenant instead of "no tenant": even a single-tenant deployment
+  # has at least two tenants, one for the adopter app and one for this one.
+  consumer_tenants = var.tenancy_mode == "multi" ? var.tenants : {
+    default = { name = "Default", email_domain = null, identity_providers = null }
   }
+  effective_tenants = merge(local.consumer_tenants, {
+    auth = { name = "Auth", email_domain = null, identity_providers = null }
+  })
 
   auth_site_bucket_name = "${var.app_name}-${var.deployment_environment}-auth-site"
 
@@ -370,12 +377,23 @@ resource "aws_dynamodb_table_item" "roles" {
   })
 }
 
-# Schema (tenantId hash key + emailDomain GSI) stays stable across tenancy_mode
-# switches so toggling the mode later doesn't force a table replacement.
+# Schema (tenantId hash key, sk range key, emailDomain + clientId GSIs) stays
+# stable across tenancy_mode switches so toggling the mode later doesn't force
+# a table replacement. One item type per sk prefix:
+#   - "PROFILE"          -- the tenant record itself (name, legacy emailDomain
+#                            used only by the signup-time tenant lookup below).
+#   - "CLIENT#<clientId>" -- client_id -> tenant_id registry entry, looked up
+#                            via the clientId-index (the tenant isn't known
+#                            yet when this lookup happens, hence the GSI).
+#   - "DOMAIN#<domain>"   -- (email_domain, tenant_id) -> identity provider
+#                            pin. Looked up by GetItem on the primary key
+#                            since the tenant is already known by then (from
+#                            client_id) -- no GSI needed.
 resource "aws_dynamodb_table" "tenants" {
   name         = "ddb-${var.app_name}-${var.deployment_environment}-${local.short_region}-auth-tenants"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "tenantId"
+  range_key    = "sk"
 
   attribute {
     name = "tenantId"
@@ -383,7 +401,17 @@ resource "aws_dynamodb_table" "tenants" {
   }
 
   attribute {
+    name = "sk"
+    type = "S"
+  }
+
+  attribute {
     name = "emailDomain"
+    type = "S"
+  }
+
+  attribute {
+    name = "clientId"
     type = "S"
   }
 
@@ -393,6 +421,16 @@ resource "aws_dynamodb_table" "tenants" {
 
     key_schema {
       attribute_name = "emailDomain"
+      key_type       = "HASH"
+    }
+  }
+
+  global_secondary_index {
+    name            = "clientId-index"
+    projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "clientId"
       key_type       = "HASH"
     }
   }
@@ -414,16 +452,82 @@ resource "aws_dynamodb_table_item" "tenants" {
 
   table_name = aws_dynamodb_table.tenants.name
   hash_key   = aws_dynamodb_table.tenants.hash_key
+  range_key  = aws_dynamodb_table.tenants.range_key
 
   item = jsonencode(merge(
     {
       tenantId = { S = each.key }
+      sk       = { S = "PROFILE" }
       name     = { S = each.value.name }
     },
     each.value.email_domain == null ? {} : {
       emailDomain = { S = each.value.email_domain }
     }
   ))
+}
+
+# The client_id -> tenant_id registry: every consumer client belongs to a
+# tenant ("default" in single-tenant mode, since var.tenants/tenant_id are
+# meaningless there), plus the auth application's own client below.
+resource "aws_dynamodb_table_item" "tenant_clients" {
+  for_each = aws_cognito_user_pool_client.consumer
+
+  table_name = aws_dynamodb_table.tenants.name
+  hash_key   = aws_dynamodb_table.tenants.hash_key
+  range_key  = aws_dynamodb_table.tenants.range_key
+
+  item = jsonencode({
+    tenantId = { S = var.tenancy_mode == "multi" ? var.clients[each.key].tenant_id : "default" }
+    sk       = { S = "CLIENT#${each.value.id}" }
+    clientId = { S = each.value.id }
+  })
+}
+
+# auth.<zone> reached without a client_id (the admin panel, and later a user
+# profile) resolves to the auth application's own tenant, not "no tenant" --
+# this registers its Cognito client under that reserved tenant id so the
+# same client_id -> tenant_id lookup path covers it too, even though
+# resolveTenantIdForClient's real fast path is "no client_id at all".
+resource "aws_dynamodb_table_item" "auth_site_tenant_client" {
+  count = local.create_auth_site ? 1 : 0
+
+  table_name = aws_dynamodb_table.tenants.name
+  hash_key   = aws_dynamodb_table.tenants.hash_key
+  range_key  = aws_dynamodb_table.tenants.range_key
+
+  item = jsonencode({
+    tenantId = { S = "auth" }
+    sk       = { S = "CLIENT#${aws_cognito_user_pool_client.auth_site[0].id}" }
+    clientId = { S = aws_cognito_user_pool_client.auth_site[0].id }
+  })
+}
+
+# The (email_domain, tenant_id) -> identity provider pins: a tenant's domain
+# owner can lock their users to a corporate IdP. Keyed by (tenantId, domain)
+# rather than a global domain GSI, since the tenant is already resolved (via
+# client_id) by the time this is looked up -- see resolveIdentityProviderForDomain.
+locals {
+  tenant_domain_providers = merge([
+    for tenant_id, tenant in local.effective_tenants : {
+      for domain, provider_id in coalesce(tenant.identity_providers, {}) :
+      "${tenant_id}#${domain}" => { tenant_id = tenant_id, domain = domain, provider_id = provider_id }
+    }
+  ]...)
+}
+
+resource "aws_dynamodb_table_item" "tenant_domain_providers" {
+  for_each = local.tenant_domain_providers
+
+  table_name = aws_dynamodb_table.tenants.name
+  hash_key   = aws_dynamodb_table.tenants.hash_key
+  range_key  = aws_dynamodb_table.tenants.range_key
+
+  item = jsonencode({
+    tenantId           = { S = each.value.tenant_id }
+    sk                 = { S = "DOMAIN#${each.value.domain}" }
+    domain             = { S = each.value.domain }
+    identityProviderId = { S = each.value.provider_id }
+  })
 }
 
 # The sensitive access-control table (who has which role in which tenant)
@@ -1112,13 +1216,28 @@ resource "aws_iam_policy" "auth_api" {
         ]
         Resource = [one(module.verification_codes[*].table_arn)]
       },
+      # Tenancy resolution at /auth/identify: GetItem for the (tenantId,
+      # "DOMAIN#<domain>") identity-provider pin (the tenant is already known
+      # by then), Query on clientId-index to resolve client_id -> tenant_id
+      # (the tenant *isn't* known yet, hence the GSI).
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem"]
+        Resource = [aws_dynamodb_table.tenants.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query"]
+        Resource = ["${aws_dynamodb_table.tenants.arn}/index/clientId-index"]
+      },
       # This function's own environment variables are encrypted with
       # aws_kms_key.this, same as every other Lambda in this module, and it
       # also needs kms:Decrypt on the verification_codes table's own CMK
       # (DynamoDB requires the *caller* to hold KMS permissions on the
       # table's key -- see the matching statement on
       # aws_iam_policy.pre_token_generation for the full rationale) plus the
-      # CMK-encrypted session-signing secret above.
+      # CMK-encrypted session-signing secret above. The tenants table shares
+      # aws_kms_key.this, already covered.
       {
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
@@ -1162,6 +1281,8 @@ resource "aws_lambda_function" "auth_api" {
     variables = {
       USER_POOL_ID                   = aws_cognito_user_pool.this.id
       AUTH_CLIENT_ID                 = one(aws_cognito_user_pool_client.auth_site[*].id)
+      TENANTS_TABLE_NAME             = aws_dynamodb_table.tenants.name
+      AUTH_APP_TENANT_ID             = "auth"
       SESSION_SIGNING_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
       VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
       VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)

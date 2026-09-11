@@ -79,6 +79,18 @@ to `"multi"` and populate `tenants` (keyed by tenantId, with an
 `email_domain` driving the post-confirmation trigger's tenant-resolution
 lookup) for real multi-tenant behavior.
 
+Two distinct lookups drive tenancy at sign-in time, both against the
+`tenants` table: the calling application's `client_id` resolves the tenant
+(each entry in `clients` sets `tenant_id`, required in `"multi"` mode), and
+within that tenant, the user's email domain resolves an identity provider
+pin (`tenants.<id>.identity_providers`, keyed by domain) — a domain with no
+entry falls back to the tenant's defaults (local signup, any offered social
+providers). A request reaching `auth.<zone>` with no `client_id` at all (the
+admin panel, and later a user profile) resolves to the auth application's
+own reserved tenant, `"auth"` — present in every deployment, including
+`"single"` mode, which therefore always has at least two tenants even
+though it exposes no tenant CRUD.
+
 ### Multi-tenant with a custom role catalog
 
 ```hcl
@@ -95,10 +107,21 @@ module "auth" {
     acme-corp = {
       name         = "Acme Corp"
       email_domain = "acme.example.com"
+      identity_providers = {
+        "acme.example.com" = "okta-acme"
+      }
     }
     globex = {
       name         = "Globex"
       email_domain = "globex.example.com"
+    }
+  }
+
+  clients = {
+    webapp = {
+      callback_urls = ["https://app.example.com/callback"]
+      logout_urls   = ["https://app.example.com/logout"]
+      tenant_id     = "acme-corp"
     }
   }
 
@@ -233,14 +256,14 @@ knobs worth reviewing before a production launch.
 | `password_policy` | Password policy overrides. Defaults match doxchange's proven config. | `object(...)` |
 | `advanced_security_mode` | Cognito threat protection: `AUDIT`, `ENFORCED`, or `OFF`. Default `"OFF"` -- AUDIT/ENFORCED require a paid Cognito feature plan (billed per MAU, same rate either mode). See `doc/auth-api-rate-limiting.md`. | `string` |
 | `auth_api_throttling` | Per-route throttle limits (`burst_limit`, a request count; `rate_limit`, requests/second) applied to the public `/api/v1/auth*` routes. Defaults `burst_limit=10`, `rate_limit=5` -- no extra AWS cost. See `doc/auth-api-rate-limiting.md`. | `object(...)` |
-| `clients` | Consumer app clients to create, keyed by logical name. The auth site's own client is always created separately and doesn't need an entry here. Empty by default. | `map(object(...))` |
+| `clients` | Consumer app clients to create, keyed by logical name. The auth site's own client is always created separately and doesn't need an entry here. `tenant_id` (a key of `tenants`) is required in `"multi"` mode. Empty by default. | `map(object(...))` |
 | `groups` | Optional Cognito groups (coarse, cosmetic relative to the DynamoDB privilege system). | `map(object(...))` |
 | `baseline_groups` | Group names every newly-confirmed user is added to. | `list(string)` |
 | `create_identity_pool` | Whether to create an identity pool for AWS credential vending. Default `false`. | `bool` |
 | `identity_pool_authenticated_role_policy_arns` | Policy ARNs for the identity pool's authenticated role. | `list(string)` |
 | `ses_configuration` | Optional SES identity for branded emails. Defaults to Cognito's own email service. | `object(...)` |
 | `tenancy_mode` | `"single"` (default) or `"multi"`. | `string` |
-| `tenants` | Tenant catalog, keyed by tenantId. Only meaningful in `"multi"` mode. | `map(object(...))` |
+| `tenants` | Tenant catalog, keyed by tenantId. Only meaningful in `"multi"` mode. `identity_providers` pins email domains within a tenant to an identity provider id, keyed by domain. `"auth"` is reserved for the auth application's own tenant. | `map(object(...))` |
 | `roles` | Role catalog. Defaults to a minimal `member`/`admin` catalog. | `map(object(...))` |
 | `default_role_id` | Role every newly-confirmed user is assigned. Default `"member"`. | `string` |
 | `auth_profile` | Which optional layers to provision: `"full"` (default), `"auth_api"`, or `"identity_only"`. See Auth profiles above. | `string` |

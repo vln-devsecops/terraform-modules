@@ -276,6 +276,20 @@ run "auth_api_role_owns_verification_codes_end_to_end" {
   }
 }
 
+run "auth_api_role_can_resolve_tenancy_from_client_id" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, aws_dynamodb_table.tenants.arn)
+    error_message = "auth_api's role should be able to GetItem the tenants table directly (the DOMAIN# identity-provider pin, once the tenant is already known)."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, "${aws_dynamodb_table.tenants.arn}/index/clientId-index")
+    error_message = "auth_api's role should be able to Query the tenants table's clientId-index -- the tenant isn't known yet when resolving from client_id."
+  }
+}
+
 run "auth_api_env_vars_carry_verification_code_config" {
   command = plan
 
@@ -287,6 +301,18 @@ run "auth_api_env_vars_carry_verification_code_config" {
       one(aws_lambda_function.auth_api[0].environment).variables["SES_FROM_ADDRESS"] == "no-reply@example.com"
     )
     error_message = "auth_api's environment variables should match lambda-src's expected verification-code config keys and defaults."
+  }
+}
+
+run "auth_api_env_vars_carry_tenancy_resolution_config" {
+  command = plan
+
+  assert {
+    condition = (
+      one(aws_lambda_function.auth_api[0].environment).variables["TENANTS_TABLE_NAME"] == aws_dynamodb_table.tenants.name &&
+      one(aws_lambda_function.auth_api[0].environment).variables["AUTH_APP_TENANT_ID"] == "auth"
+    )
+    error_message = "auth_api's environment variables should match lambda-src's expected tenancy-resolution config keys: the tenants table name and the auth application's own reserved tenant id."
   }
 }
 

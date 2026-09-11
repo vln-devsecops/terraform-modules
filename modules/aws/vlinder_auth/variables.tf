@@ -131,14 +131,22 @@ variable "auth_api_throttling" {
 }
 
 variable "clients" {
-  description = "Map of app clients this module should create for the consumer's own frontend(s), keyed by a logical name. The admin panel's own client is always created separately and does not need an entry here. Empty by default -- add entries once you know your app's callback/logout URLs."
+  description = "Map of app clients this module should create for the consumer's own frontend(s), keyed by a logical name. The admin panel's own client is always created separately and does not need an entry here. Empty by default -- add entries once you know your app's callback/logout URLs. tenant_id (a key of var.tenants) is required in \"multi\" tenancy_mode -- it's how /auth/identify resolves which tenant a request belongs to from the client_id it authenticates as; ignored in \"single\" mode, where every client belongs to the sole implicit \"default\" tenant."
   type = map(object({
     generate_secret      = optional(bool, false)
     callback_urls        = list(string)
     logout_urls          = list(string)
     allowed_oauth_scopes = optional(list(string), ["openid", "email", "profile"])
+    tenant_id            = optional(string)
   }))
   default = {}
+
+  validation {
+    condition = var.tenancy_mode != "multi" || alltrue([
+      for client in values(var.clients) : client.tenant_id != null && contains(keys(var.tenants), client.tenant_id)
+    ])
+    error_message = "In tenancy_mode \"multi\", every client must set tenant_id to a key of var.tenants."
+  }
 }
 
 variable "groups" {
@@ -211,12 +219,18 @@ variable "tenancy_mode" {
 }
 
 variable "tenants" {
-  description = "Tenant catalog, keyed by tenantId. Only meaningful when tenancy_mode is \"multi\" -- ignored in \"single\" mode, where a single implicit \"default\" tenant is used instead. email_domain drives the post-confirmation trigger's tenant-resolution lookup."
+  description = "Tenant catalog, keyed by tenantId. Only meaningful when tenancy_mode is \"multi\" -- ignored in \"single\" mode, where a single implicit \"default\" tenant is used instead. email_domain drives the post-confirmation trigger's tenant-resolution lookup. identity_providers pins email domains within this tenant to an identity provider id, keyed by domain -- resolved at /auth/identify; a domain with no entry falls back to the tenant's defaults (local signup, any offered social providers). \"auth\" is reserved for the auth application's own tenant and may not be used as a key here."
   type = map(object({
-    name         = string
-    email_domain = optional(string)
+    name               = string
+    email_domain       = optional(string)
+    identity_providers = optional(map(string), {})
   }))
   default = {}
+
+  validation {
+    condition     = !contains(keys(var.tenants), "auth")
+    error_message = "\"auth\" is a reserved tenant id for the auth application's own tenant; choose a different tenantId."
+  }
 }
 
 variable "roles" {
