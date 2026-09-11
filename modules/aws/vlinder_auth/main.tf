@@ -987,37 +987,37 @@ locals {
   # in this local's expression unless the admin API actually exists.
   admin_api_routes = local.create_admin_panel ? {
     list_users = {
-      route_key            = "GET /users"
+      route_key            = "GET /api/v1/users"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
       authorization_type   = "CUSTOM"
     }
     get_user = {
-      route_key            = "GET /users/{userId}"
+      route_key            = "GET /api/v1/users/{userId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
       authorization_type   = "CUSTOM"
     }
     set_user_enabled = {
-      route_key            = "PATCH /users/{userId}/enabled"
+      route_key            = "PATCH /api/v1/users/{userId}/enabled"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
       authorization_type   = "CUSTOM"
     }
     list_roles = {
-      route_key            = "GET /roles"
+      route_key            = "GET /api/v1/roles"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
       authorization_type   = "CUSTOM"
     }
     assign_role = {
-      route_key            = "PUT /users/{userId}/roles/{roleId}"
+      route_key            = "PUT /api/v1/users/{userId}/roles/{roleId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
       authorization_type   = "CUSTOM"
     }
     revoke_role = {
-      route_key            = "DELETE /users/{userId}/roles/{roleId}"
+      route_key            = "DELETE /api/v1/users/{userId}/roles/{roleId}"
       lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
       authorization_type   = "CUSTOM"
@@ -1313,15 +1313,16 @@ resource "aws_lambda_function" "auth_api" {
 
 locals {
   # Public routes (no JWT authorizer -- this is how a token is obtained). The
-  # CloudFront /api/v1/auth* behavior strips the /api/v1 prefix, so the API
-  # Gateway sees /auth/*.
+  # /api/v1 prefix is part of the route_key itself -- nothing strips it in
+  # transit, so a future /api/v2 can be routed alongside without touching
+  # this behavior or its CloudFront function.
   # throttling_burst_limit/rate_limit below are an aggregate, account-wide cap
   # shared across all callers of a route (not per-source-IP) -- see
   # doc/auth-api-rate-limiting.md for what this does and doesn't defend
   # against, and why waf_web_acl_arn is still recommended alongside it.
   auth_api_routes = local.create_public_auth_api ? {
     identify = {
-      route_key              = "POST /auth/identify"
+      route_key              = "POST /api/v1/auth/identify"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
@@ -1329,7 +1330,7 @@ locals {
       authorization_type     = "CUSTOM"
     }
     password = {
-      route_key              = "POST /auth/password"
+      route_key              = "POST /api/v1/auth/password"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
@@ -1337,7 +1338,7 @@ locals {
       authorization_type     = "CUSTOM"
     }
     signup = {
-      route_key              = "POST /auth/signup"
+      route_key              = "POST /api/v1/auth/signup"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
@@ -1345,7 +1346,7 @@ locals {
       authorization_type     = "CUSTOM"
     }
     confirm = {
-      route_key              = "POST /auth/confirm"
+      route_key              = "POST /api/v1/auth/confirm"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
@@ -1353,7 +1354,7 @@ locals {
       authorization_type     = "CUSTOM"
     }
     resend = {
-      route_key              = "POST /auth/resend"
+      route_key              = "POST /api/v1/auth/resend"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
@@ -1361,7 +1362,7 @@ locals {
       authorization_type     = "CUSTOM"
     }
     forgot = {
-      route_key              = "POST /auth/forgot"
+      route_key              = "POST /api/v1/auth/forgot"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
@@ -1369,7 +1370,7 @@ locals {
       authorization_type     = "CUSTOM"
     }
     reset = {
-      route_key              = "POST /auth/reset"
+      route_key              = "POST /api/v1/auth/reset"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
@@ -1592,19 +1593,17 @@ resource "aws_cloudfront_function" "admin_api_rewrite" {
   name    = "${replace(local.auth_site_domain, ".", "-")}-admin-api-vr"
   runtime = "cloudfront-js-2.0"
   publish = true
-  comment = "Strips /api/v1 prefix before forwarding to admin HTTP API for ${local.auth_site_domain}"
+  comment = "Cookie-to-bearer lift and X-Origin-Verify strip for the admin HTTP API on ${local.auth_site_domain}"
   code    = file("${path.module}/templates/admin_api_rewrite.js")
 }
 
-resource "aws_cloudfront_function" "auth_api_rewrite" {
-  count = local.create_public_auth_api ? 1 : 0
-
-  name    = "${replace(local.auth_site_domain, ".", "-")}-auth-api-vr"
-  runtime = "cloudfront-js-2.0"
-  publish = true
-  comment = "Strips /api/v1 prefix before forwarding to auth HTTP API for ${local.auth_site_domain}"
-  code    = file("${path.module}/templates/auth_api_rewrite.js")
-}
+# No auth_api_rewrite: the /api/v1/auth* routes are public and passed through
+# unmodified (route_key already carries /api/v1 -- nothing strips it in
+# transit), and the origin's custom_header override is what actually
+# enforces X-Origin-Verify (it overwrites any viewer-supplied value of the
+# same name unconditionally -- see the AuthApi origin block below), so a
+# viewer-request function here would only ever be redundant defense-in-depth,
+# not a real security boundary.
 
 data "aws_iam_policy_document" "auth_site_cloudfront_read" {
   count = local.create_auth_site ? 1 : 0
@@ -1747,7 +1746,7 @@ resource "aws_cloudfront_distribution" "auth_site" {
   # API. Cookies are forwarded both ways -- the flow reads/sets the HttpOnly
   # identify/AS session cookies.
   dynamic "ordered_cache_behavior" {
-    for_each = local.create_public_auth_api ? [one(aws_cloudfront_function.auth_api_rewrite[*].arn)] : []
+    for_each = local.create_public_auth_api ? [true] : []
     content {
       path_pattern           = "/api/v1/auth*"
       target_origin_id       = "AuthApi"
@@ -1769,10 +1768,8 @@ resource "aws_cloudfront_distribution" "auth_site" {
       default_ttl = 0
       max_ttl     = 0
 
-      function_association {
-        event_type   = "viewer-request"
-        function_arn = ordered_cache_behavior.value
-      }
+      # No function_association: these routes are public and passed through
+      # unmodified -- see the comment above aws_cloudfront_function.admin_api_rewrite.
     }
   }
 

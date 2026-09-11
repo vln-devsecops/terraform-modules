@@ -118,10 +118,10 @@ variables {
 run "auth_api_routes_are_throttled_with_the_default_limits" {
   command = plan
 
-  # auth_api_rewrite.js and the /api/v1/auth* CloudFront behavior make these
-  # 7 routes unauthenticated by design -- see doc/auth-api-rate-limiting.md
-  # for why they're throttled (aggregate, not per-IP) and default to a
-  # no-extra-cost burst/rate pair.
+  # The /api/v1/auth* CloudFront behavior (no function -- these routes are
+  # public and passed through unmodified) makes these 7 routes unauthenticated
+  # by design -- see doc/auth-api-rate-limiting.md for why they're throttled
+  # (aggregate, not per-IP) and default to a no-extra-cost burst/rate pair.
   assert {
     condition = alltrue([
       for route in local.auth_api_routes :
@@ -133,8 +133,8 @@ run "auth_api_routes_are_throttled_with_the_default_limits" {
   assert {
     condition = alltrue([
       for route_key in [
-        "POST /auth/identify", "POST /auth/password", "POST /auth/signup",
-        "POST /auth/confirm", "POST /auth/resend", "POST /auth/forgot", "POST /auth/reset",
+        "POST /api/v1/auth/identify", "POST /api/v1/auth/password", "POST /api/v1/auth/signup",
+        "POST /api/v1/auth/confirm", "POST /api/v1/auth/resend", "POST /api/v1/auth/forgot", "POST /api/v1/auth/reset",
       ] :
       contains([for route in local.auth_api_routes : route.route_key], route_key)
     ])

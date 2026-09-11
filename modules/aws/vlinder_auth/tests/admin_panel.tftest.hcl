@@ -358,3 +358,19 @@ run "session_signing_key_secret_is_omitted_for_the_identity_only_profile" {
     error_message = "The session-signing-key rotation timer should not be provisioned in the identity_only profile."
   }
 }
+
+run "no_api_cloudfront_function_rewrites_a_uri" {
+  command = plan
+
+  # Every API route_key already carries /api/v1 -- nothing should strip or
+  # rewrite it in transit, so a future /api/v2 can be routed alongside
+  # without touching any CloudFront function. admin_api_rewrite still does a
+  # cookie-to-Authorization lift and an X-Origin-Verify strip, neither of
+  # which touches request.uri. (spa_viewer_request is excluded here -- it
+  # legitimately rewrites the URI for SPA client-side-routing fallback,
+  # an unrelated concern from API URI stability.)
+  assert {
+    condition     = !strcontains(aws_cloudfront_function.admin_api_rewrite[0].code, "request.uri =")
+    error_message = "admin_api_rewrite must not rewrite the request URI -- the /api/v1 prefix is part of the route_key itself now, not stripped in transit."
+  }
+}
