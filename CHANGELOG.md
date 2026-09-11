@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/vln-devsecops/terraform-modules/compare/v1.2.0...v1.2.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* Update Trivy ignore comments for S3 bucket and VPC resources ([#265](https://github.com/vln-devsecops/terraform-modules/issues/265)) ([38db213](https://github.com/vln-devsecops/terraform-modules/commit/38db213f408c95664e47a41ce00de7f71f87e767))
+
 ## [1.2.0](https://github.com/vln-devsecops/terraform-modules/compare/v1.1.0...v1.2.0) (2026-09-01)
 
 
