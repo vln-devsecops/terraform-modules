@@ -1510,12 +1510,22 @@ locals {
   # and stable now even though no handler answers them yet (plan.md step 6);
   # publishing the URL is independent of the endpoint existing, same as
   # identify.ts's /federation location before step 11 builds it.
+  # response_types_supported/subject_types_supported/
+  # id_token_signing_alg_values_supported are REQUIRED members of an OIDC
+  # discovery document per OpenID Connect Discovery 1.0 -- distinct from,
+  # and in addition to, the acknowledged issuer/host-mismatch deviation
+  # (see doc/rationale.md and this module's README). Values reflect what
+  # Cognito actually does: authorization code flow, public (not pairwise)
+  # subject identifiers, RS256-signed tokens.
   auth_site_discovery_document_json = jsonencode({
-    issuer                 = local.admin_api_issuer_url
-    jwks_uri               = "${local.admin_api_issuer_url}/.well-known/jwks.json"
-    authorization_endpoint = "https://${local.auth_site_domain}/api/v1/auth/authorize"
-    token_endpoint         = "https://${local.auth_site_domain}/api/v1/auth/token"
-    end_session_endpoint   = "https://${local.auth_site_domain}/api/v1/auth/logout"
+    issuer                                = local.admin_api_issuer_url
+    jwks_uri                              = "${local.admin_api_issuer_url}/.well-known/jwks.json"
+    authorization_endpoint                = "https://${local.auth_site_domain}/api/v1/auth/authorize"
+    token_endpoint                        = "https://${local.auth_site_domain}/api/v1/auth/token"
+    end_session_endpoint                  = "https://${local.auth_site_domain}/api/v1/auth/logout"
+    response_types_supported              = ["code"]
+    subject_types_supported               = ["public"]
+    id_token_signing_alg_values_supported = ["RS256"]
   })
 }
 
@@ -1585,6 +1595,15 @@ resource "null_resource" "auth_site_deploy" {
     command     = <<-EOT
       set -euo pipefail
       aws s3 sync "${local.auth_site_dist_dir}" "s3://${one(aws_s3_bucket.auth_site[*].id)}/" --delete
+      # aws s3 sync guesses Content-Type from the file extension; the
+      # discovery document is extensionless by specification (RFC 8414/OIDC
+      # Discovery), so sync leaves it as binary/octet-stream. Several strict
+      # OIDC client libraries validate the response's Content-Type and
+      # reject a discovery document served as anything but application/json
+      # -- overwrite it explicitly, same object, no content change.
+      aws s3 cp "${local.auth_site_dist_dir}/.well-known/openid-configuration" \
+        "s3://${one(aws_s3_bucket.auth_site[*].id)}/.well-known/openid-configuration" \
+        --content-type "application/json"
       aws cloudfront create-invalidation \
         --distribution-id "${one(aws_cloudfront_distribution.auth_site[*].id)}" \
         --paths "/*"

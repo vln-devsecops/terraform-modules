@@ -272,6 +272,30 @@ run "discovery_document_publishes_first_party_endpoint_urls" {
   }
 }
 
+run "discovery_document_carries_the_oidc_required_metadata" {
+  command = plan
+
+  # response_types_supported/subject_types_supported/
+  # id_token_signing_alg_values_supported are REQUIRED members of an OIDC
+  # discovery document per OpenID Connect Discovery 1.0 -- distinct from the
+  # already-acknowledged issuer/host-mismatch deviation. Values reflect what
+  # Cognito actually does.
+  assert {
+    condition     = tolist(jsondecode(local_file.auth_site_discovery_document[0].content).response_types_supported) == tolist(["code"])
+    error_message = "response_types_supported must be published (REQUIRED by OIDC Discovery 1.0) and reflect Cognito's authorization code flow."
+  }
+
+  assert {
+    condition     = tolist(jsondecode(local_file.auth_site_discovery_document[0].content).subject_types_supported) == tolist(["public"])
+    error_message = "subject_types_supported must be published (REQUIRED by OIDC Discovery 1.0) -- Cognito uses public, not pairwise, subject identifiers."
+  }
+
+  assert {
+    condition     = tolist(jsondecode(local_file.auth_site_discovery_document[0].content).id_token_signing_alg_values_supported) == tolist(["RS256"])
+    error_message = "id_token_signing_alg_values_supported must be published (REQUIRED by OIDC Discovery 1.0) -- Cognito signs with RS256."
+  }
+}
+
 run "discovery_document_deploy_redeploys_on_content_change" {
   command = plan
 
