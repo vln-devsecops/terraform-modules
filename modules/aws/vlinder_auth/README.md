@@ -237,6 +237,14 @@ one app doesn't have to affect another. `advanced_security_mode`,
 for the first two), and `password_policy` are the other security-relevant
 knobs worth reviewing before a production launch.
 
+Not caller-configurable, always on: the auth site's default CloudFront
+behavior (the login/admin SPA, not the `/api/v1/*`/`/api/v1/auth*` API
+behaviors) carries a response-headers policy setting `X-Frame-Options:
+DENY`, `Content-Security-Policy: frame-ancestors 'none'`, and
+`Strict-Transport-Security` (2-year max-age, subdomains included, no
+preload -- preloading is a deliberate, hard-to-reverse choice for the
+caller's own domain, so this module doesn't opt every deployment into it).
+
 ## Inputs
 
 | Name | Description | Type |

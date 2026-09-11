@@ -82,6 +82,12 @@ mock_provider "aws" {
     }
   }
 
+  mock_resource "aws_cloudfront_response_headers_policy" {
+    defaults = {
+      id = "responseheaderspolicyplaceholder"
+    }
+  }
+
   mock_resource "aws_apigatewayv2_api" {
     defaults = {
       id            = "apiplaceholder"
@@ -372,5 +378,35 @@ run "no_api_cloudfront_function_rewrites_a_uri" {
   assert {
     condition     = !strcontains(aws_cloudfront_function.admin_api_rewrite[0].code, "request.uri =")
     error_message = "admin_api_rewrite must not rewrite the request URI -- the /api/v1 prefix is part of the route_key itself now, not stripped in transit."
+  }
+}
+
+run "default_behavior_carries_the_clickjacking_response_headers_policy" {
+  command = plan
+
+  # We host our own login UI rather than a hosted one precisely to control
+  # the experience, which makes closing off clickjacking against it our
+  # responsibility -- see doc/architecture.md's "Edge response headers"
+  # section. Only the default (SPA) behavior needs this: /api/v1/* and
+  # /api/v1/auth* serve JSON, not framable HTML.
+  assert {
+    condition     = one(aws_cloudfront_distribution.auth_site[*].default_cache_behavior)[0].response_headers_policy_id == aws_cloudfront_response_headers_policy.auth_site_default[0].id
+    error_message = "The default cache behavior should use the auth_site_default response-headers policy."
+  }
+
+  assert {
+    condition = (
+      one(aws_cloudfront_response_headers_policy.auth_site_default[*].security_headers_config)[0].frame_options[0].frame_option == "DENY" &&
+      one(aws_cloudfront_response_headers_policy.auth_site_default[*].security_headers_config)[0].frame_options[0].override == true
+    )
+    error_message = "The response-headers policy should set X-Frame-Options: DENY, overriding any origin-supplied value."
+  }
+
+  assert {
+    condition = (
+      one(aws_cloudfront_response_headers_policy.auth_site_default[*].security_headers_config)[0].content_security_policy[0].content_security_policy == "frame-ancestors 'none'"
+      && one(aws_cloudfront_response_headers_policy.auth_site_default[*].security_headers_config)[0].content_security_policy[0].override == true
+    )
+    error_message = "The response-headers policy should set Content-Security-Policy: frame-ancestors 'none', overriding any origin-supplied value."
   }
 }

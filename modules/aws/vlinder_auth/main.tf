@@ -1587,6 +1587,50 @@ resource "aws_cloudfront_function" "spa_viewer_request" {
   code    = file("${path.module}/templates/spa_viewer_request.js")
 }
 
+# We host our own login UI rather than a hosted one precisely to control the
+# experience, which makes closing off clickjacking against it our
+# responsibility -- see doc/architecture.md's "Edge response headers"
+# section. Only the default (SPA) behavior gets this policy; the /api/v1/*
+# and /api/v1/auth* behaviors serve JSON, not framable HTML, so the same
+# clickjacking concern doesn't apply to them the same way. Tracked
+# separately in workspace-vlinder-auth for whether they need their own
+# header posture (e.g. X-Content-Type-Options, Referrer-Policy).
+resource "aws_cloudfront_response_headers_policy" "auth_site_default" {
+  # checkov:skip=CKV_AWS_259:HSTS is enabled below (2-year max-age, subdomains
+  #   included); this check additionally hard-requires preload=true, which
+  #   this module won't force on every consumer -- submitting a domain to
+  #   the browser-shipped HSTS preload list is a deliberate, hard-to-reverse
+  #   operational choice for the caller's own domain, not something a
+  #   reusable module should opt every deployment into by default.
+  count = local.create_auth_site ? 1 : 0
+
+  name = "${replace(local.auth_site_domain, ".", "-")}-default-headers"
+
+  security_headers_config {
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+
+    content_security_policy {
+      content_security_policy = "frame-ancestors 'none'"
+      override                = true
+    }
+
+    # The distribution already forces HTTPS (viewer_protocol_policy =
+    # redirect-to-https on every behavior); this pins that in the browser
+    # too, closing the one-request window an active network attacker would
+    # otherwise get before that redirect lands. Not preloaded -- that binds
+    # the whole domain into a browser-shipped list outside our control.
+    strict_transport_security {
+      access_control_max_age_sec = 63072000 # 2 years, the usual HSTS floor
+      include_subdomains         = true
+      override                   = true
+      preload                    = false
+    }
+  }
+}
+
 resource "aws_cloudfront_function" "admin_api_rewrite" {
   count = local.create_admin_panel ? 1 : 0
 
@@ -1640,7 +1684,6 @@ resource "aws_s3_bucket_policy" "auth_site" {
 resource "aws_cloudfront_distribution" "auth_site" {
   # checkov:skip=CKV_AWS_310:Single-origin SPA does not need origin failover
   # checkov:skip=CKV_AWS_374:Geo restriction intentionally disabled
-  # checkov:skip=CKV2_AWS_32:Response headers policy caller-configurable
   # checkov:skip=CKV2_AWS_47:No EC2 in this module
   # checkov:skip=CKV_AWS_68:WAF is caller-configurable via var.waf_web_acl_arn; not enforced at module level
   # checkov:skip=CKV_AWS_86:CloudFront access logging is caller-configurable; not enforced at module level
@@ -1721,9 +1764,10 @@ resource "aws_cloudfront_distribution" "auth_site" {
 
   # Default behavior: SPA static assets from S3
   default_cache_behavior {
-    target_origin_id       = "AuthSiteS3"
-    viewer_protocol_policy = "redirect-to-https"
-    compress               = true
+    target_origin_id           = "AuthSiteS3"
+    viewer_protocol_policy     = "redirect-to-https"
+    compress                   = true
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.auth_site_default[0].id
 
     allowed_methods = ["GET", "HEAD", "OPTIONS"]
     cached_methods  = ["GET", "HEAD", "OPTIONS"]
