@@ -213,6 +213,36 @@ Because the SPA is installed and synced at apply time, the apply host needs
 Node + npm (already required for the Lambdas) and the AWS CLI, plus a GitHub
 token with `read:packages` for the `@vln-devsecops` scope.
 
+### OIDC discovery document
+
+Terraform also writes an OIDC discovery document to
+`https://<auth_site_domain>/.well-known/openid-configuration`, the same way
+it writes `config.json` — public, cacheable, and CORS-open, since a resource
+server on another origin needs to fetch it to learn what issuer and keys to
+trust. **This is the integration contract**, not the `issuer_url` output:
+`issuer_url` is convenience for wiring your own app's `http_api`
+`jwt_authorizers` in the same `apply`, but a value baked into a relying
+party at deploy time reintroduces the exact lockstep-redeploy coupling the
+discovery document exists to remove. See `doc/rationale.md`'s "The expected
+issuer is configuration, not a constant" in `node-vlinder-auth` for the full
+reasoning.
+
+`issuer` and `jwks_uri` name Cognito's own endpoints directly (never
+mirrored, so key rotation is never served stale); `authorization_endpoint`,
+`token_endpoint` and `end_session_endpoint` are first-party
+(`https://<auth_site_domain>/api/v1/auth/{authorize,token,logout}`) and
+stable now, even before a handler answers them.
+
+**Known spec deviation**: OIDC Discovery §4.3 and RFC 8414 §2 both require a
+discovery document's `issuer` to match the host it was fetched from. Ours,
+served at `auth.<zone>` while naming Cognito's issuer, does not — strict
+client libraries (`openid-client`, most Go/Java OIDC stacks) will reject it.
+The deviation is temporary and self-resolving: the day `auth.<zone>` mints
+its own tokens, the document becomes compliant at the same path with no
+consumer migration. Until then, integrators using a strict library should
+fetch the document as plain JSON and configure it manually, or point the
+library at Cognito's own (fully compliant) discovery URL instead.
+
 ## Security defaults
 
 `allow_self_signup` defaults to `true` and `mfa_configuration` defaults to
@@ -283,7 +313,7 @@ caller's own domain, so this module doesn't opt every deployment into it).
 | --- | --- |
 | `user_pool_id` | Cognito user pool ID. |
 | `user_pool_arn` | Cognito user pool ARN. |
-| `issuer_url` | OIDC issuer URL — wire into your own app's `http_api` `jwt_authorizers`. |
+| `issuer_url` | OIDC issuer URL. Convenience for wiring your own app's `http_api` `jwt_authorizers` in the same apply -- **not** the integration contract; see "OIDC discovery document" above. |
 | `auth_domain` | Auth site domain (CloudFront alias for the login and admin SPA), or null when `auth_profile` is `"identity_only"`. |
 | `auth_url` | Base HTTPS URL for the auth site (login SPA), or null when `auth_profile` is `"identity_only"`. |
 | `client_ids` | Map of consumer app client IDs, keyed as in `var.clients`. |

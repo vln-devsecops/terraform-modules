@@ -9,8 +9,8 @@ output "user_pool_arn" {
 }
 
 output "issuer_url" {
-  description = "OIDC issuer URL for this user pool. Wire this into your own app's http_api jwt_authorizers to authorize against tokens this module issues."
-  value       = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${aws_cognito_user_pool.this.id}"
+  description = "OIDC issuer URL for this user pool. Convenience for wiring your own app's http_api jwt_authorizers in the same apply -- it is NOT the integration contract for a relying party validating tokens this module issues. That contract is the published OIDC discovery document at https://<auth_site_domain>/.well-known/openid-configuration (see doc/rationale.md's \"The expected issuer is configuration, not a constant\"); a resource server should pin against the document's issuer/jwks_uri, not this output, so a future change to what mints tokens doesn't require every relying party to re-apply in lockstep."
+  value       = local.admin_api_issuer_url
 }
 
 output "auth_domain" {

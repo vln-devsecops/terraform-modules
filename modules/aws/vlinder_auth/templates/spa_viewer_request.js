@@ -6,6 +6,14 @@ function handler(event) {
   var request = event.request;
   var uri = request.uri;
 
+  // /.well-known/* (the OIDC discovery document) is extensionless by
+  // specification, so it would otherwise fail the static-asset check below
+  // and get silently rewritten to /index.html with a 200 -- a failure that
+  // looks like success to every consumer. Let it through unchanged.
+  if (uri.startsWith('/.well-known/')) {
+    return request;
+  }
+
   // Static asset — let it through unchanged
   var lastSegment = uri.split('/').pop();
   if (lastSegment.includes('.')) {
