@@ -201,4 +201,135 @@ run "no_site_deploy_at_all_for_the_identity_only_profile" {
     condition     = length(local_file.auth_site_config) == 0
     error_message = "config.json should not be written in the identity_only profile."
   }
+
+  assert {
+    condition     = length(local_file.auth_site_discovery_document) == 0
+    error_message = "The OIDC discovery document should not be written in the identity_only profile -- there is no site to serve it from."
+  }
+}
+
+run "discovery_document_is_written_to_the_well_known_path" {
+  command = plan
+
+  assert {
+    condition     = length(local_file.auth_site_discovery_document) == 1
+    error_message = "The OIDC discovery document should be written by Terraform when auth_profile is \"full\"."
+  }
+
+  assert {
+    condition     = local_file.auth_site_discovery_document[0].filename == "${local.auth_site_dist_dir}/.well-known/openid-configuration"
+    error_message = "The discovery document must be served at the standard /.well-known/openid-configuration path."
+  }
+}
+
+run "discovery_document_issuer_and_jwks_uri_come_straight_from_cognito" {
+  command = plan
+
+  # No mirroring: issuer/jwks_uri name Cognito's real endpoints directly, so
+  # key rotation is never served stale. Both must derive from this module's
+  # own user pool, mirroring identity.tftest.hcl's issuer_url assertions.
+  assert {
+    condition     = local_file.auth_site_discovery_document[0].content == local.auth_site_discovery_document_json
+    error_message = "The discovery document's content should come from local.auth_site_discovery_document_json, not be constructed separately."
+  }
+
+  assert {
+    condition     = jsondecode(local_file.auth_site_discovery_document[0].content).issuer == local.admin_api_issuer_url
+    error_message = "The discovery document's issuer must be this module's own user pool issuer URL -- the same one the admin API's JWT authorizer trusts."
+  }
+
+  assert {
+    condition     = strcontains(jsondecode(local_file.auth_site_discovery_document[0].content).issuer, aws_cognito_user_pool.this.id)
+    error_message = "issuer must be derived from this module's own user pool."
+  }
+
+  assert {
+    condition     = jsondecode(local_file.auth_site_discovery_document[0].content).jwks_uri == "${local.admin_api_issuer_url}/.well-known/jwks.json"
+    error_message = "jwks_uri must resolve against Cognito's own issuer, not a mirrored/rehosted key set."
+  }
+}
+
+run "discovery_document_publishes_first_party_endpoint_urls" {
+  command = plan
+
+  # These name routes that don't have a live handler yet (plan.md step 6 --
+  # RP handoff: /authorize + /token -- is still unbuilt), which is fine:
+  # publishing the URL is independent of the endpoint existing yet, same as
+  # identify.ts's /federation location before step 11 builds it.
+  assert {
+    condition     = jsondecode(local_file.auth_site_discovery_document[0].content).authorization_endpoint == "https://${local.auth_site_domain}/api/v1/auth/authorize"
+    error_message = "authorization_endpoint should be first-party, under this deployment's own auth site domain."
+  }
+
+  assert {
+    condition     = jsondecode(local_file.auth_site_discovery_document[0].content).token_endpoint == "https://${local.auth_site_domain}/api/v1/auth/token"
+    error_message = "token_endpoint should be first-party, under this deployment's own auth site domain."
+  }
+
+  assert {
+    condition     = jsondecode(local_file.auth_site_discovery_document[0].content).end_session_endpoint == "https://${local.auth_site_domain}/api/v1/auth/logout"
+    error_message = "end_session_endpoint should be first-party, under this deployment's own auth site domain."
+  }
+}
+
+run "discovery_document_carries_the_oidc_required_metadata" {
+  command = plan
+
+  # response_types_supported/subject_types_supported/
+  # id_token_signing_alg_values_supported are REQUIRED members of an OIDC
+  # discovery document per OpenID Connect Discovery 1.0 -- distinct from the
+  # already-acknowledged issuer/host-mismatch deviation. Values reflect what
+  # Cognito actually does.
+  assert {
+    condition     = tolist(jsondecode(local_file.auth_site_discovery_document[0].content).response_types_supported) == tolist(["code"])
+    error_message = "response_types_supported must be published (REQUIRED by OIDC Discovery 1.0) and reflect Cognito's authorization code flow."
+  }
+
+  assert {
+    condition     = tolist(jsondecode(local_file.auth_site_discovery_document[0].content).subject_types_supported) == tolist(["public"])
+    error_message = "subject_types_supported must be published (REQUIRED by OIDC Discovery 1.0) -- Cognito uses public, not pairwise, subject identifiers."
+  }
+
+  assert {
+    condition     = tolist(jsondecode(local_file.auth_site_discovery_document[0].content).id_token_signing_alg_values_supported) == tolist(["RS256"])
+    error_message = "id_token_signing_alg_values_supported must be published (REQUIRED by OIDC Discovery 1.0) -- Cognito signs with RS256."
+  }
+}
+
+run "discovery_document_deploy_redeploys_on_content_change" {
+  command = plan
+
+  assert {
+    condition     = one(null_resource.auth_site_deploy[*].triggers)["discovery_document"] == local.auth_site_discovery_document_json
+    error_message = "The SPA deploy step should re-sync when the discovery document's content changes, same as it does for config.json."
+  }
+}
+
+run "spa_viewer_request_does_not_rewrite_well_known_paths" {
+  command = plan
+
+  # Without this exemption, /.well-known/openid-configuration (extensionless
+  # by specification) fails the static-asset check and gets silently
+  # rewritten to /index.html with a 200 -- a failure that looks like success
+  # to every consumer.
+  assert {
+    condition     = strcontains(aws_cloudfront_function.spa_viewer_request[0].code, ".well-known")
+    error_message = "spa_viewer_request must exempt /.well-known/* from the SPA fallback rewrite."
+  }
+}
+
+run "default_behavior_response_headers_policy_is_cors_open" {
+  command = plan
+
+  # The discovery document must be fetchable cross-origin (a resource
+  # server on a different origin needs to read it to learn what issuer/keys
+  # to trust). CloudFront response-headers policies apply per-behavior, not
+  # per-path, so this is asserted at the policy level.
+  assert {
+    condition = (
+      one(aws_cloudfront_response_headers_policy.auth_site_default[*].cors_config)[0].access_control_allow_origins[0].items == toset(["*"])
+      && one(aws_cloudfront_response_headers_policy.auth_site_default[*].cors_config)[0].origin_override == true
+    )
+    error_message = "The default behavior's response-headers policy should be CORS-open (Access-Control-Allow-Origin: *) so the discovery document is fetchable cross-origin."
+  }
 }

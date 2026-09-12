@@ -1501,6 +1501,32 @@ locals {
     multiTenant      = var.tenancy_mode == "multi"
     adminEnabled     = local.create_admin_panel
   })
+
+  # issuer/jwks_uri name Cognito's own endpoints directly -- never mirrored,
+  # so key rotation is never served stale -- derived from the same
+  # local.admin_api_issuer_url the admin API's JWT authorizer already
+  # trusts, so there's one source of truth for "what issues our tokens".
+  # authorization_endpoint/token_endpoint/end_session_endpoint are first-party
+  # and stable now even though no handler answers them yet (plan.md step 6);
+  # publishing the URL is independent of the endpoint existing, same as
+  # identify.ts's /federation location before step 11 builds it.
+  # response_types_supported/subject_types_supported/
+  # id_token_signing_alg_values_supported are REQUIRED members of an OIDC
+  # discovery document per OpenID Connect Discovery 1.0 -- distinct from,
+  # and in addition to, the acknowledged issuer/host-mismatch deviation
+  # (see doc/rationale.md and this module's README). Values reflect what
+  # Cognito actually does: authorization code flow, public (not pairwise)
+  # subject identifiers, RS256-signed tokens.
+  auth_site_discovery_document_json = jsonencode({
+    issuer                                = local.admin_api_issuer_url
+    jwks_uri                              = "${local.admin_api_issuer_url}/.well-known/jwks.json"
+    authorization_endpoint                = "https://${local.auth_site_domain}/api/v1/auth/authorize"
+    token_endpoint                        = "https://${local.auth_site_domain}/api/v1/auth/token"
+    end_session_endpoint                  = "https://${local.auth_site_domain}/api/v1/auth/logout"
+    response_types_supported              = ["code"]
+    subject_types_supported               = ["public"]
+    id_token_signing_alg_values_supported = ["RS256"]
+  })
 }
 
 resource "null_resource" "auth_site_package" {
@@ -1534,19 +1560,34 @@ resource "local_file" "auth_site_config" {
   depends_on = [null_resource.auth_site_package]
 }
 
+# The OIDC discovery document -- see doc/rationale.md's "The expected issuer
+# is configuration, not a constant". Written the same way as config.json
+# (Terraform, not a deploy script, produces it), into the same S3 origin, so
+# the sync below picks it up automatically. local_file creates the
+# .well-known/ subdirectory itself.
+resource "local_file" "auth_site_discovery_document" {
+  count = local.create_auth_site ? 1 : 0
+
+  filename = "${local.auth_site_dist_dir}/.well-known/openid-configuration"
+  content  = local.auth_site_discovery_document_json
+
+  depends_on = [null_resource.auth_site_package]
+}
+
 resource "null_resource" "auth_site_deploy" {
   count = local.create_auth_site ? 1 : 0
 
   # Redeploy when the pinned SPA version changes (package-lock.json bump,
   # since that lockfile -- not the package.json semver range -- pins the
-  # resolved version) or when the per-deployment config.json changes.
-  # Content of a given published version is immutable, so filemd5 of the
-  # lockfile is a faithful proxy for "the SPA changed".
+  # resolved version) or when the per-deployment config.json/discovery
+  # document changes. Content of a given published version is immutable, so
+  # filemd5 of the lockfile is a faithful proxy for "the SPA changed".
   triggers = {
-    package_lock = filemd5("${path.module}/site-build/package-lock.json")
-    config       = local.auth_site_config_json
-    bucket       = one(aws_s3_bucket.auth_site[*].id)
-    distribution = one(aws_cloudfront_distribution.auth_site[*].id)
+    package_lock       = filemd5("${path.module}/site-build/package-lock.json")
+    config             = local.auth_site_config_json
+    discovery_document = local.auth_site_discovery_document_json
+    bucket             = one(aws_s3_bucket.auth_site[*].id)
+    distribution       = one(aws_cloudfront_distribution.auth_site[*].id)
   }
 
   provisioner "local-exec" {
@@ -1554,6 +1595,15 @@ resource "null_resource" "auth_site_deploy" {
     command     = <<-EOT
       set -euo pipefail
       aws s3 sync "${local.auth_site_dist_dir}" "s3://${one(aws_s3_bucket.auth_site[*].id)}/" --delete
+      # aws s3 sync guesses Content-Type from the file extension; the
+      # discovery document is extensionless by specification (RFC 8414/OIDC
+      # Discovery), so sync leaves it as binary/octet-stream. Several strict
+      # OIDC client libraries validate the response's Content-Type and
+      # reject a discovery document served as anything but application/json
+      # -- overwrite it explicitly, same object, no content change.
+      aws s3 cp "${local.auth_site_dist_dir}/.well-known/openid-configuration" \
+        "s3://${one(aws_s3_bucket.auth_site[*].id)}/.well-known/openid-configuration" \
+        --content-type "application/json"
       aws cloudfront create-invalidation \
         --distribution-id "${one(aws_cloudfront_distribution.auth_site[*].id)}" \
         --paths "/*"
@@ -1563,6 +1613,7 @@ resource "null_resource" "auth_site_deploy" {
   depends_on = [
     null_resource.auth_site_package,
     local_file.auth_site_config,
+    local_file.auth_site_discovery_document,
     aws_s3_bucket_policy.auth_site,
   ]
 }
@@ -1627,6 +1678,30 @@ resource "aws_cloudfront_response_headers_policy" "auth_site_default" {
       include_subdomains         = true
       override                   = true
       preload                    = false
+    }
+  }
+
+  # CORS-open for the OIDC discovery document (/.well-known/openid-configuration)
+  # -- browser-side resource-server code must be able to fetch it cross-origin
+  # to learn what issuer/keys to trust, and it carries nothing secret. A
+  # CloudFront response-headers policy applies to its whole behavior, not a
+  # sub-path, so this also opens CORS on the rest of the default behavior
+  # (the login/admin SPA's static assets) -- all public, unauthenticated GETs
+  # already, so that's not a new exposure.
+  cors_config {
+    access_control_allow_credentials = false
+    origin_override                  = true
+
+    access_control_allow_origins {
+      items = ["*"]
+    }
+
+    access_control_allow_methods {
+      items = ["GET", "HEAD"]
+    }
+
+    access_control_allow_headers {
+      items = ["*"]
     }
   }
 }
