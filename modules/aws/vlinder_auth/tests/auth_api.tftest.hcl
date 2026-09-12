@@ -316,6 +316,20 @@ run "auth_api_env_vars_carry_tenancy_resolution_config" {
   }
 }
 
+run "auth_api_role_and_env_can_use_the_one_time_token_key" {
+  command = plan
+
+  assert {
+    condition     = one(aws_lambda_function.auth_api[0].environment).variables["ONE_TIME_TOKEN_KEY_SECRET_ID"] == one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)
+    error_message = "auth_api's ONE_TIME_TOKEN_KEY_SECRET_ID env var should point at the one-time-token secret, matching lambda-src's oneTimeToken.ts."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn))
+    error_message = "auth_api's role should be able to GetSecretValue on the one-time-token key -- it mints and later exchanges the RP-handoff one-time token."
+  }
+}
+
 run "verification_code_ttl_and_max_attempts_overrides_are_plumbed_through" {
   command = plan
 

@@ -219,6 +219,11 @@ run "client_registered_to_a_tenant_is_looked_up_via_the_client_id_index" {
     condition     = one([for gsi in aws_dynamodb_table.tenants.global_secondary_index : gsi if gsi.name == "clientId-index"]) != null
     error_message = "The tenants table needs a clientId-index GSI: the tenant isn't known yet when resolving from client_id."
   }
+
+  assert {
+    condition     = jsondecode(aws_dynamodb_table_item.tenant_clients["web"].item).redirectUris.L[0].S == "https://app.example.com/callback"
+    error_message = "The CLIENT# registry item should carry the client's own callback_urls as its RP-handoff redirect_uri allowlist -- node-vlinder-auth's /authorize rejects anything not in this exact list."
+  }
 }
 
 run "auth_site_own_client_is_registered_under_the_reserved_auth_tenant" {
