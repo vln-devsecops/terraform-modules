@@ -1082,41 +1082,43 @@ module "admin_api" {
 # below; the value only ever exists in that ephemeral process, never as a
 # Terraform resource attribute.
 #
-# Rotation is a fixed 30-day cadence (time_rotating), reseeding the secret
-# the same way -- an immediate overwrite, not a staged
-# AWSPENDING/AWSCURRENT rollover, since sessions are short-lived and
-# invalidating in-flight ones on rotation is an already-accepted tradeoff
-# (same as the old manual-taint rotation this replaces).
+# Ongoing rotation is a fixed 30-day cadence, but driven by
+# aws_scheduler_schedule.auth_secret_rotation invoking
+# aws_lambda_function.rotate_secret below -- not by a Terraform-apply-time
+# trigger -- so an adopter isn't required to redeploy just to rotate a key.
+# Same immediate-overwrite semantics either way (a plain PutSecretValue, not
+# a staged AWSPENDING/AWSCURRENT rollover): sessions are short-lived, and
+# invalidating in-flight ones on rotation is an already-accepted tradeoff.
 #
-# The seed step needs secretsmanager:GetRandomPassword and PutSecretValue on
-# whoever runs `terraform apply` -- not a role this module manages, same
-# apply-time-CLI assumption the SPA deploy step below already makes for
-# `aws s3 sync` / `aws cloudfront create-invalidation`. In this org that's
-# the vln-devsecops-terraform-modules-integration role (see
+# The *initial* seed (this secret has no value at all until something puts
+# one) still needs secretsmanager:GetRandomPassword and PutSecretValue on
+# whoever runs the first `terraform apply` -- not a role this module
+# manages, same apply-time-CLI assumption the SPA deploy step below already
+# makes for `aws s3 sync` / `aws cloudfront create-invalidation`. In this
+# org that's the vln-devsecops-terraform-modules-integration role (see
 # infra/rg_security.tf's terraform_modules_integration_test_policy, which
 # must carry secretsmanager:GetRandomPassword for this to work).
 resource "aws_secretsmanager_secret" "auth_session_signing_key" {
   count = local.create_public_auth_api ? 1 : 0
 
-  # checkov:skip=CKV2_AWS_57:Rotation is handled by time_rotating + the local-exec reseed below (see comment above), not aws_secretsmanager_secret_rotation
+  # checkov:skip=CKV2_AWS_57:Rotation is handled by aws_scheduler_schedule.auth_secret_rotation invoking rotate_secret below, not aws_secretsmanager_secret_rotation
   name       = "${var.app_name}-${var.deployment_environment}-auth-session-signing-key"
   kms_key_id = aws_kms_key.this.id
 
   tags = merge(local.common_tags, { rg = "security" })
 }
 
-resource "time_rotating" "auth_session_signing_key" {
-  count = local.create_public_auth_api ? 1 : 0
-
-  rotation_days = 30
-}
-
 resource "null_resource" "auth_session_signing_key_seed" {
   count = local.create_public_auth_api ? 1 : 0
 
+  # Bootstrap only: a freshly-created secret has no value at all until
+  # something puts one, so this must still run once at first apply. Ongoing
+  # rotation is no longer triggered here (no time_rotating dependency) --
+  # aws_scheduler_schedule.auth_secret_rotation below invokes
+  # aws_lambda_function.rotate_secret on a recurring schedule instead, so
+  # rotation happens automatically without requiring a redeploy.
   triggers = {
     secret_id = one(aws_secretsmanager_secret.auth_session_signing_key[*].id)
-    rotation  = one(time_rotating.auth_session_signing_key[*].id)
   }
 
   provisioner "local-exec" {
@@ -1149,25 +1151,21 @@ resource "null_resource" "auth_session_signing_key_seed" {
 resource "aws_secretsmanager_secret" "auth_one_time_token_key" {
   count = local.create_public_auth_api ? 1 : 0
 
-  # checkov:skip=CKV2_AWS_57:Rotation is handled by time_rotating + the local-exec reseed below, not aws_secretsmanager_secret_rotation
+  # checkov:skip=CKV2_AWS_57:Rotation is handled by aws_scheduler_schedule.auth_secret_rotation invoking rotate_secret below, not aws_secretsmanager_secret_rotation
   name       = "${var.app_name}-${var.deployment_environment}-auth-one-time-token-key"
   kms_key_id = aws_kms_key.this.id
 
   tags = merge(local.common_tags, { rg = "security" })
 }
 
-resource "time_rotating" "auth_one_time_token_key" {
-  count = local.create_public_auth_api ? 1 : 0
-
-  rotation_days = 30
-}
-
 resource "null_resource" "auth_one_time_token_key_seed" {
   count = local.create_public_auth_api ? 1 : 0
 
+  # Bootstrap only -- see the matching comment on
+  # null_resource.auth_session_signing_key_seed above. Ongoing rotation is
+  # aws_scheduler_schedule.auth_secret_rotation below.
   triggers = {
     secret_id = one(aws_secretsmanager_secret.auth_one_time_token_key[*].id)
-    rotation  = one(time_rotating.auth_one_time_token_key[*].id)
   }
 
   provisioner "local-exec" {
@@ -1184,6 +1182,189 @@ resource "null_resource" "auth_one_time_token_key_seed" {
   }
 
   depends_on = [aws_secretsmanager_secret.auth_one_time_token_key]
+}
+
+# Rotates auth_session_signing_key and auth_one_time_token_key on a
+# recurring schedule (aws_scheduler_schedule below) rather than only at
+# `terraform apply` time, so an adopter isn't required to redeploy just to
+# rotate a key. One Lambda handles both secrets -- which one, and what
+# password length to generate, arrives as the schedule's own event input,
+# not anything hardcoded here.
+resource "aws_iam_role" "rotate_secret" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  name               = "${var.app_name}-${var.deployment_environment}-rotate-secret"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "rotate_secret_logging" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  role       = aws_iam_role.rotate_secret[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_policy" "rotate_secret" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  name = "${var.app_name}-${var.deployment_environment}-rotate-secret"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # GetRandomPassword has no resource type of its own -- it isn't
+        # scoped to a particular secret, only Resource = ["*"] is valid.
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetRandomPassword"]
+        Resource = ["*"]
+      },
+      {
+        Effect = "Allow"
+        Action = ["secretsmanager:PutSecretValue"]
+        Resource = [
+          one(aws_secretsmanager_secret.auth_session_signing_key[*].arn),
+          one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn),
+        ]
+      },
+      # Writing a new value to a CMK-encrypted secret needs GenerateDataKey
+      # on that CMK, the same way reading one needs Decrypt -- see the
+      # matching statement on aws_iam_policy.pre_token_generation for the
+      # full rationale on why DynamoDB/Secrets Manager with a
+      # customer-managed key requires the *caller* to hold KMS permission.
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+        Resource = [aws_kms_key.this.arn]
+      },
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "rotate_secret_permissions" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  role       = aws_iam_role.rotate_secret[0].name
+  policy_arn = aws_iam_policy.rotate_secret[0].arn
+}
+
+resource "aws_lambda_function" "rotate_secret" {
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
+  # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
+  # checkov:skip=CKV_AWS_173:No environment block at all (this handler takes no env vars -- which secret to rotate arrives as the schedule's event input instead), so there's nothing for Checkov to find encrypted -- kms_key_arn below still encrypts the function's own configuration at rest, same as every other Lambda in this module
+  count = local.create_public_auth_api ? 1 : 0
+
+  function_name    = "${var.app_name}-${var.deployment_environment}-rotate-secret"
+  role             = aws_iam_role.rotate_secret[0].arn
+  handler          = "rotate-secret/handler.handler"
+  runtime          = "nodejs22.x"
+  timeout          = 10
+  publish          = true
+  kms_key_arn      = aws_kms_key.this.arn
+  filename         = data.archive_file.lambda_package.output_path
+  source_code_hash = data.archive_file.lambda_package.output_base64sha256
+
+  tracing_config {
+    mode = "Active"
+  }
+
+  tags = local.common_tags
+
+  depends_on = [aws_iam_role_policy_attachment.rotate_secret_logging]
+}
+
+# EventBridge Scheduler needs its own role to assume when invoking the
+# target -- distinct from the Lambda's own execution role above.
+data "aws_iam_policy_document" "scheduler_assume_role" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["scheduler.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "rotate_secret_scheduler" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  name               = "${var.app_name}-${var.deployment_environment}-rotate-secret-scheduler"
+  assume_role_policy = one(data.aws_iam_policy_document.scheduler_assume_role[*].json)
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy" "rotate_secret_scheduler" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  name = "${var.app_name}-${var.deployment_environment}-rotate-secret-scheduler"
+  role = aws_iam_role.rotate_secret_scheduler[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = [aws_lambda_function.rotate_secret[0].arn]
+      },
+    ]
+  })
+}
+
+# Two schedules, not one rule with two targets: aws_scheduler_schedule
+# models a single target per schedule, and each secret needs its own
+# password length (64 for the session-signing key, 32 -- exactly what
+# A256GCM's dir mode requires -- for the one-time-token key) passed as
+# distinct event input.
+resource "aws_scheduler_schedule" "rotate_auth_session_signing_key" {
+  # checkov:skip=CKV_AWS_297:A schedule's own stored config here is just a secret ARN and a password length, both already visible in this Terraform plan/state regardless -- not the secret value itself, which stays CMK-encrypted in Secrets Manager unaffected by this setting. Encrypting it with the module's own CMK would additionally require granting the scheduler.amazonaws.com service principal key-policy access, a real, apply-time-only-verifiable KMS grant not worth the risk for data with no confidentiality requirement.
+  count = local.create_public_auth_api ? 1 : 0
+
+  name                = "${var.app_name}-${var.deployment_environment}-rotate-session-signing-key"
+  schedule_expression = "rate(30 days)"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.rotate_secret[0].arn
+    role_arn = aws_iam_role.rotate_secret_scheduler[0].arn
+    input = jsonencode({
+      secretId       = one(aws_secretsmanager_secret.auth_session_signing_key[*].id)
+      passwordLength = 64
+    })
+  }
+}
+
+resource "aws_scheduler_schedule" "rotate_auth_one_time_token_key" {
+  # checkov:skip=CKV_AWS_297:Same reasoning as rotate_auth_session_signing_key above -- stored input is a secret ARN and password length, not secret material.
+  count = local.create_public_auth_api ? 1 : 0
+
+  name                = "${var.app_name}-${var.deployment_environment}-rotate-one-time-token-key"
+  schedule_expression = "rate(30 days)"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.rotate_secret[0].arn
+    role_arn = aws_iam_role.rotate_secret_scheduler[0].arn
+    input = jsonencode({
+      secretId       = one(aws_secretsmanager_secret.auth_one_time_token_key[*].id)
+      passwordLength = 32
+    })
+  }
 }
 
 # Signup and password-reset codes, generated/verified by auth_api itself
