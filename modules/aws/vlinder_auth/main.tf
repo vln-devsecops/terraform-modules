@@ -480,6 +480,12 @@ resource "aws_dynamodb_table_item" "tenant_clients" {
     tenantId = { S = var.tenancy_mode == "multi" ? var.clients[each.key].tenant_id : "default" }
     sk       = { S = "CLIENT#${each.value.id}" }
     clientId = { S = each.value.id }
+    # The RP handoff's /authorize endpoint (node-vlinder-auth's
+    # resolveClientRedirectUris) rejects any redirect_uri not in this exact
+    # list -- the open-redirect guard. Reuses the same callback_urls this
+    # client's own Cognito app client already declares, rather than a
+    # second, potentially-drifting allowlist.
+    redirectUris = { L = [for url in var.clients[each.key].callback_urls : { S = url }] }
   })
 }
 
@@ -1129,6 +1135,57 @@ resource "null_resource" "auth_session_signing_key_seed" {
   depends_on = [aws_secretsmanager_secret.auth_session_signing_key]
 }
 
+# The RP handoff's one-time token (node-vlinder-auth's oneTimeToken.ts) is a
+# dir/A256GCM JWE, not a signed JWS like the session tokens above -- it
+# carries the real Cognito AuthenticationResult end to end from /password to
+# /token, so it must be opaque, not merely tamper-evident. A256GCM's dir mode
+# needs exactly 32 raw key bytes; --password-length 32 with
+# --exclude-punctuation guarantees 32 single-byte (alphanumeric) UTF-8
+# characters, so the secret's string value is exactly 32 bytes as-is, no
+# decoding step needed on the Lambda side. Same seed/rotation mechanism as
+# auth_session_signing_key above -- an in-flight one-time token is even less
+# of a concern here, since its own TTL is 60 seconds, not the AS session's
+# lifetime.
+resource "aws_secretsmanager_secret" "auth_one_time_token_key" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  # checkov:skip=CKV2_AWS_57:Rotation is handled by time_rotating + the local-exec reseed below, not aws_secretsmanager_secret_rotation
+  name       = "${var.app_name}-${var.deployment_environment}-auth-one-time-token-key"
+  kms_key_id = aws_kms_key.this.id
+
+  tags = merge(local.common_tags, { rg = "security" })
+}
+
+resource "time_rotating" "auth_one_time_token_key" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  rotation_days = 30
+}
+
+resource "null_resource" "auth_one_time_token_key_seed" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  triggers = {
+    secret_id = one(aws_secretsmanager_secret.auth_one_time_token_key[*].id)
+    rotation  = one(time_rotating.auth_one_time_token_key[*].id)
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
+      set -euo pipefail
+      RANDOM_VALUE="$(aws secretsmanager get-random-password \
+        --exclude-punctuation --password-length 32 --require-each-included-type \
+        --output text --query RandomPassword)"
+      aws secretsmanager put-secret-value \
+        --secret-id "${one(aws_secretsmanager_secret.auth_one_time_token_key[*].id)}" \
+        --secret-string "$RANDOM_VALUE"
+    EOT
+  }
+
+  depends_on = [aws_secretsmanager_secret.auth_one_time_token_key]
+}
+
 # Signup and password-reset codes, generated/verified by auth_api itself
 # rather than Cognito's own email-verification mechanism (see node-vlinder-
 # auth/doc/plan-auth-chrome-and-verification-codes.md). Short-TTL and
@@ -1197,9 +1254,12 @@ resource "aws_iam_policy" "auth_api" {
         Resource = [aws_cognito_user_pool.this.arn]
       },
       {
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
-        Resource = [one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)]
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
+        Resource = [
+          one(aws_secretsmanager_secret.auth_session_signing_key[*].arn),
+          one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn),
+        ]
       },
       {
         Effect = "Allow"
@@ -1289,6 +1349,7 @@ resource "aws_lambda_function" "auth_api" {
       TENANTS_TABLE_NAME             = aws_dynamodb_table.tenants.name
       AUTH_APP_TENANT_ID             = "auth"
       SESSION_SIGNING_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
+      ONE_TIME_TOKEN_KEY_SECRET_ID   = one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)
       VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
       VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
       VERIFICATION_CODE_MAX_ATTEMPTS = tostring(var.verification_code_max_attempts)
@@ -1301,6 +1362,7 @@ resource "aws_lambda_function" "auth_api" {
   depends_on = [
     aws_iam_role_policy_attachment.auth_api_logging,
     null_resource.auth_session_signing_key_seed,
+    null_resource.auth_one_time_token_key_seed,
   ]
 
   lifecycle {
