@@ -210,6 +210,32 @@ resource "aws_cognito_user_pool_client" "auth_site" {
     "ALLOW_ADMIN_USER_PASSWORD_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
   ]
+
+  # Cognito's own refresh-token lifetime, made an explicit, named 30-day
+  # value here rather than left at Cognito's undocumented-in-this-codebase
+  # default -- matches aws_lambda_function.auth_api's
+  # REFRESH_TOKEN_TTL_SECONDS (2,592,000 seconds = 30 days) below so the two
+  # move in lockstep.
+  refresh_token_validity = 30
+  token_validity_units {
+    refresh_token = "days"
+  }
+
+  # Native rotation-with-reuse-detection: each REFRESH_TOKEN_AUTH call
+  # returns a new refresh token and invalidates the old one, and replaying an
+  # already-rotated-away token revokes the whole token family. 60 seconds is
+  # the maximum grace period AWS allows. node-vlinder-auth's
+  # doc/rationale.md already mandates that front-end clients single-flight
+  # concurrent refreshes specifically to avoid tripping reuse detection, so
+  # this grace period isn't covering that case -- it's for an ordinary
+  # client-side retry after a lost/timed-out response to a rotation that
+  # *did* commit at Cognito. Without a grace period, that legitimate retry
+  # would look identical to a stolen-refresh-token replay and revoke the
+  # whole family.
+  refresh_token_rotation {
+    feature                    = "ENABLED"
+    retry_grace_period_seconds = 60
+  }
 }
 
 resource "aws_cognito_user_group" "this" {
@@ -1184,6 +1210,47 @@ resource "null_resource" "auth_one_time_token_key_seed" {
   depends_on = [aws_secretsmanager_secret.auth_one_time_token_key]
 }
 
+# The refresh token grant container (node-vlinder-auth's refreshToken.ts) is
+# also a dir/A256GCM JWE wrapping a Cognito refresh token across rotations --
+# see auth_one_time_token_key's identical reasoning above for why 32 raw key
+# bytes and --exclude-punctuation/--password-length 32 apply unchanged here.
+# Same seed/rotation mechanism as the other two secrets.
+resource "aws_secretsmanager_secret" "auth_refresh_token_key" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  # checkov:skip=CKV2_AWS_57:Rotation is handled by aws_scheduler_schedule.auth_secret_rotation invoking rotate_secret below, not aws_secretsmanager_secret_rotation
+  name       = "${var.app_name}-${var.deployment_environment}-auth-refresh-token-key"
+  kms_key_id = aws_kms_key.this.id
+
+  tags = merge(local.common_tags, { rg = "security" })
+}
+
+resource "null_resource" "auth_refresh_token_key_seed" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  # Bootstrap only -- see the matching comment on
+  # null_resource.auth_session_signing_key_seed above. Ongoing rotation is
+  # aws_scheduler_schedule.auth_secret_rotation below.
+  triggers = {
+    secret_id = one(aws_secretsmanager_secret.auth_refresh_token_key[*].id)
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
+      set -euo pipefail
+      RANDOM_VALUE="$(aws secretsmanager get-random-password \
+        --exclude-punctuation --password-length 32 --require-each-included-type \
+        --output text --query RandomPassword)"
+      aws secretsmanager put-secret-value \
+        --secret-id "${one(aws_secretsmanager_secret.auth_refresh_token_key[*].id)}" \
+        --secret-string "$RANDOM_VALUE"
+    EOT
+  }
+
+  depends_on = [aws_secretsmanager_secret.auth_refresh_token_key]
+}
+
 # Rotates auth_session_signing_key and auth_one_time_token_key on a
 # recurring schedule (aws_scheduler_schedule below) rather than only at
 # `terraform apply` time, so an adopter isn't required to redeploy just to
@@ -1226,6 +1293,7 @@ resource "aws_iam_policy" "rotate_secret" {
         Resource = [
           one(aws_secretsmanager_secret.auth_session_signing_key[*].arn),
           one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn),
+          one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn),
         ]
       },
       # Writing a new value to a CMK-encrypted secret needs GenerateDataKey
@@ -1320,11 +1388,11 @@ resource "aws_iam_role_policy" "rotate_secret_scheduler" {
   })
 }
 
-# Two schedules, not one rule with two targets: aws_scheduler_schedule
+# Three schedules, not one rule with multiple targets: aws_scheduler_schedule
 # models a single target per schedule, and each secret needs its own
 # password length (64 for the session-signing key, 32 -- exactly what
-# A256GCM's dir mode requires -- for the one-time-token key) passed as
-# distinct event input.
+# A256GCM's dir mode requires -- for the one-time-token and refresh-token
+# keys) passed as distinct event input.
 resource "aws_scheduler_schedule" "rotate_auth_session_signing_key" {
   # checkov:skip=CKV_AWS_297:A schedule's own stored config here is just a secret ARN and a password length, both already visible in this Terraform plan/state regardless -- not the secret value itself, which stays CMK-encrypted in Secrets Manager unaffected by this setting. Encrypting it with the module's own CMK would additionally require granting the scheduler.amazonaws.com service principal key-policy access, a real, apply-time-only-verifiable KMS grant not worth the risk for data with no confidentiality requirement.
   count = local.create_public_auth_api ? 1 : 0
@@ -1362,6 +1430,27 @@ resource "aws_scheduler_schedule" "rotate_auth_one_time_token_key" {
     role_arn = aws_iam_role.rotate_secret_scheduler[0].arn
     input = jsonencode({
       secretId       = one(aws_secretsmanager_secret.auth_one_time_token_key[*].id)
+      passwordLength = 32
+    })
+  }
+}
+
+resource "aws_scheduler_schedule" "rotate_auth_refresh_token_key" {
+  # checkov:skip=CKV_AWS_297:Same reasoning as rotate_auth_session_signing_key above -- stored input is a secret ARN and password length, not secret material.
+  count = local.create_public_auth_api ? 1 : 0
+
+  name                = "${var.app_name}-${var.deployment_environment}-rotate-refresh-token-key"
+  schedule_expression = "rate(30 days)"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.rotate_secret[0].arn
+    role_arn = aws_iam_role.rotate_secret_scheduler[0].arn
+    input = jsonencode({
+      secretId       = one(aws_secretsmanager_secret.auth_refresh_token_key[*].id)
       passwordLength = 32
     })
   }
@@ -1440,6 +1529,7 @@ resource "aws_iam_policy" "auth_api" {
         Resource = [
           one(aws_secretsmanager_secret.auth_session_signing_key[*].arn),
           one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn),
+          one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn),
         ]
       },
       {
@@ -1531,6 +1621,8 @@ resource "aws_lambda_function" "auth_api" {
       AUTH_APP_TENANT_ID             = "auth"
       SESSION_SIGNING_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
       ONE_TIME_TOKEN_KEY_SECRET_ID   = one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)
+      REFRESH_TOKEN_KEY_SECRET_ID    = one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn)
+      REFRESH_TOKEN_TTL_SECONDS      = "2592000"
       VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
       VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
       VERIFICATION_CODE_MAX_ATTEMPTS = tostring(var.verification_code_max_attempts)
@@ -1544,6 +1636,7 @@ resource "aws_lambda_function" "auth_api" {
     aws_iam_role_policy_attachment.auth_api_logging,
     null_resource.auth_session_signing_key_seed,
     null_resource.auth_one_time_token_key_seed,
+    null_resource.auth_refresh_token_key_seed,
   ]
 
   lifecycle {
