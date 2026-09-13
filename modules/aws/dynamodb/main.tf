@@ -82,6 +82,14 @@ resource "aws_dynamodb_table" "this" {
     }
   }
 
+  dynamic "ttl" {
+    for_each = var.ttl_attribute == null ? [] : [var.ttl_attribute]
+    content {
+      attribute_name = ttl.value
+      enabled        = true
+    }
+  }
+
   dynamic "attribute" {
     for_each = {
       for attr in var.attributes : attr.name => attr
@@ -107,6 +115,8 @@ resource "aws_dynamodb_table" "this" {
     enabled     = true
     kms_key_arn = local.kms_key_arn
   }
+
+  deletion_protection_enabled = var.deletion_protection_enabled
 
   tags = {
     app         = var.app_name

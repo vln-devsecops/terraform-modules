@@ -11,6 +11,12 @@ variable "attributes" {
   }))
 }
 
+variable "deletion_protection_enabled" {
+  description = "Whether to enable DynamoDB deletion protection on the table. True by default -- a table holding anything other than freely-reproducible data shouldn't disappear because of an unrelated plan (e.g. a rename that forces replacement). Set false for ephemeral test suites and other roots that are torn down as a matter of course."
+  type        = bool
+  default     = true
+}
+
 variable "deployment_environment" {
   description = "The deployment environment name such as dev, staging, or prod."
   type        = string
@@ -110,4 +116,10 @@ variable "rw_user_name" {
 variable "short_deployment_region" {
   description = "Short region identifier used in the table name, such as useast1 or euwest1."
   type        = string
+}
+
+variable "ttl_attribute" {
+  description = "Optional attribute name to enable as the table's TTL attribute (epoch seconds). Null (the default) leaves TTL disabled."
+  type        = string
+  default     = null
 }

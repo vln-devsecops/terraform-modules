@@ -66,7 +66,7 @@ routes = {
 | `name` | Name of the HTTP API. | `string` |
 | `description` | Description of the HTTP API. | `string` |
 | `cors_configuration` | CORS configuration for the API. | `object(...)` |
-| `routes` | Map of routes to create. Each key is a logical route identifier; see [Route authorization](#route-authorization). | `map(object(...))` |
+| `routes` | Map of routes to create. Each key is a logical route identifier; see [Route authorization](#route-authorization). Each route may also optionally set `throttling_burst_limit` (token-bucket capacity, a request count) and `throttling_rate_limit` (steady-state limit in requests/second) to throttle that route. | `map(object(...))` |
 | `jwt_authorizers` | Map of JWT authorizers. Key is referenced by routes via `authorizer_key`. | `map(object(...))` |
 | `lambda_authorizer` | Single Lambda REQUEST authorizer; see [Lambda authorizer](#lambda-authorizer-custom). | `object(...)` |
 | `stage_name` | API Gateway stage name. | `string` |

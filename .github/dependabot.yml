@@ -226,6 +226,7 @@ updates:
     labels:
       - dependencies
       - github-actions
+
   - package-ecosystem: npm
     directory: /modules/aws/contact_form/lambda-build
     target-branch: main
@@ -237,6 +238,16 @@ updates:
       - npm
   - package-ecosystem: npm
     directory: /modules/aws/http_api_authorizer/lambda-build
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - npm
+
+  - package-ecosystem: npm
+    directory: /modules/aws/vlinder_auth/lambda-build
     target-branch: main
     schedule:
       interval: weekly
