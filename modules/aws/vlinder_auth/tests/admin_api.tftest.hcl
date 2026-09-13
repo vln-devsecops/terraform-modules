@@ -237,6 +237,21 @@ run "admin_api_never_exposes_a_post_route" {
 run "admin_api_csrf_secret_is_provisioned_and_wired_to_auth_api" {
   command = plan
 
+  # The file-level aws_secretsmanager_secret mock above gives every secret
+  # the *same* placeholder ARN, so strcontains(..., one(admin_api_csrf_secret
+  # [*].arn)) would pass even if ADMIN_API_CSRF_SECRET_ID pointed at a
+  # different secret entirely -- all four ARNs are identical strings without
+  # this override. Give this one secret a distinct ARN so the assertions
+  # below actually exercise which secret auth_api is wired to, not merely
+  # that *some* secret's ARN appears in the policy/env var.
+  override_resource {
+    target          = aws_secretsmanager_secret.admin_api_csrf_secret[0]
+    override_during = plan
+    values = {
+      arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:admin-api-csrf-secret-distinct"
+    }
+  }
+
   # See doc/admin-api-csrf.md: this secret is the shared HMAC key behind the
   # vln_auth_csrf double-submit cookie. auth_api mints it (needs
   # GetSecretValue); admin_api_rewrite.js's own check never reads the secret
