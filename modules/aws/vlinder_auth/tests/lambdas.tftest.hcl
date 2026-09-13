@@ -38,6 +38,17 @@ mock_provider "aws" {
     }
   }
 
+  # rotate_secret's IAM policy interpolates these secrets' ARNs; without
+  # plan-time defaults those expressions (and the jsonencoded policy that
+  # embeds them) stay unknown and the assertions below can't evaluate. Same
+  # reasoning as the aws_kms_key mock above.
+  mock_resource "aws_secretsmanager_secret" {
+    defaults = {
+      id  = "secret-placeholder"
+      arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:placeholder"
+    }
+  }
+
   mock_resource "aws_dynamodb_table" {
     defaults = {
       arn = "arn:aws:dynamodb:us-east-1:123456789012:table/placeholder"
@@ -295,5 +306,92 @@ run "all_lambda_roles_can_use_the_table_encryption_keys" {
   assert {
     condition     = strcontains(aws_iam_policy.admin_api[0].policy, "kms:Decrypt")
     error_message = "admin_api must be able to use the CMKs of the tables it reads/writes."
+  }
+}
+
+run "rotate_secret_lambda_shares_the_same_zip_and_handler_path" {
+  command = plan
+
+  assert {
+    condition     = aws_lambda_function.rotate_secret[0].handler == "rotate-secret/handler.handler"
+    error_message = "rotate_secret's handler path should match its subdirectory in lambda-src's dist/ tree."
+  }
+
+  assert {
+    condition     = aws_lambda_function.rotate_secret[0].filename == aws_lambda_function.pre_sign_up.filename
+    error_message = "rotate_secret must share the same zip as the other Lambdas, same as every other handler in this package."
+  }
+}
+
+run "rotate_secret_role_can_only_write_the_two_rotatable_secrets" {
+  command = plan
+
+  assert {
+    condition = (
+      strcontains(aws_iam_policy.rotate_secret[0].policy, "secretsmanager:GetRandomPassword") &&
+      strcontains(aws_iam_policy.rotate_secret[0].policy, "secretsmanager:PutSecretValue")
+    )
+    error_message = "rotate_secret needs GetRandomPassword and PutSecretValue to actually rotate a secret."
+  }
+
+  assert {
+    condition = (
+      strcontains(aws_iam_policy.rotate_secret[0].policy, one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)) &&
+      strcontains(aws_iam_policy.rotate_secret[0].policy, one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn))
+    )
+    error_message = "rotate_secret's PutSecretValue grant should be scoped to exactly the two secrets it rotates, not a wildcard."
+  }
+}
+
+run "rotation_schedules_target_rotate_secret_with_the_right_input" {
+  command = plan
+
+  assert {
+    condition = (
+      one(aws_scheduler_schedule.rotate_auth_session_signing_key[*].schedule_expression) == "rate(30 days)" &&
+      one(aws_scheduler_schedule.rotate_auth_one_time_token_key[*].schedule_expression) == "rate(30 days)"
+    )
+    error_message = "Both rotation schedules should fire every 30 days -- an adopter should never need to redeploy just to rotate a key."
+  }
+
+  assert {
+    condition = (
+      jsondecode(one(aws_scheduler_schedule.rotate_auth_session_signing_key[*].target)[0].input).secretId == one(aws_secretsmanager_secret.auth_session_signing_key[*].id) &&
+      jsondecode(one(aws_scheduler_schedule.rotate_auth_session_signing_key[*].target)[0].input).passwordLength == 64
+    )
+    error_message = "The session-signing-key schedule should target that secret specifically, with its own 64-byte password length."
+  }
+
+  assert {
+    condition = (
+      jsondecode(one(aws_scheduler_schedule.rotate_auth_one_time_token_key[*].target)[0].input).secretId == one(aws_secretsmanager_secret.auth_one_time_token_key[*].id) &&
+      jsondecode(one(aws_scheduler_schedule.rotate_auth_one_time_token_key[*].target)[0].input).passwordLength == 32
+    )
+    error_message = "The one-time-token-key schedule should target that secret specifically, with the exact 32-byte length A256GCM's dir mode requires."
+  }
+
+  assert {
+    condition = (
+      one(aws_scheduler_schedule.rotate_auth_session_signing_key[*].target)[0].arn == aws_lambda_function.rotate_secret[0].arn &&
+      one(aws_scheduler_schedule.rotate_auth_one_time_token_key[*].target)[0].arn == aws_lambda_function.rotate_secret[0].arn
+    )
+    error_message = "Both schedules should target the same rotate_secret Lambda -- it isn't hardcoded to one secret."
+  }
+}
+
+run "rotation_infra_is_omitted_for_the_identity_only_profile" {
+  command = plan
+
+  variables {
+    auth_profile = "identity_only"
+  }
+
+  assert {
+    condition = (
+      length(aws_lambda_function.rotate_secret) == 0 &&
+      length(aws_scheduler_schedule.rotate_auth_session_signing_key) == 0 &&
+      length(aws_scheduler_schedule.rotate_auth_one_time_token_key) == 0
+    )
+    error_message = "No rotation infrastructure should be provisioned in the identity_only profile -- there is no public auth API, so no rotatable secrets either."
   }
 }

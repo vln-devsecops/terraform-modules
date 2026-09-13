@@ -302,8 +302,11 @@ run "session_signing_key_is_provisioned_via_secrets_manager_not_a_terraform_gene
   }
 
   assert {
-    condition     = length(time_rotating.auth_session_signing_key) == 1 && one(time_rotating.auth_session_signing_key[*].rotation_days) == 30
-    error_message = "The session-signing-key secret should rotate on a fixed 30-day cadence."
+    # Rotation is a recurring aws_scheduler_schedule invoking rotate_secret,
+    # not a Terraform-apply-time trigger -- see rbac.tftest.hcl's dedicated
+    # rotation-schedule assertions for the full contract.
+    condition     = length(aws_scheduler_schedule.rotate_auth_session_signing_key) == 1
+    error_message = "The session-signing-key secret should have a recurring rotation schedule."
   }
 
   assert {
@@ -360,8 +363,8 @@ run "session_signing_key_secret_is_omitted_for_the_identity_only_profile" {
   }
 
   assert {
-    condition     = length(time_rotating.auth_session_signing_key) == 0
-    error_message = "The session-signing-key rotation timer should not be provisioned in the identity_only profile."
+    condition     = length(aws_scheduler_schedule.rotate_auth_session_signing_key) == 0
+    error_message = "The session-signing-key rotation schedule should not be provisioned in the identity_only profile."
   }
 }
 
