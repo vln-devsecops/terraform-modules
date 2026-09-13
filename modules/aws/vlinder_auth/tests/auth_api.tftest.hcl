@@ -330,6 +330,45 @@ run "auth_api_role_and_env_can_use_the_one_time_token_key" {
   }
 }
 
+run "auth_api_role_and_env_can_use_the_refresh_token_key" {
+  command = plan
+
+  assert {
+    condition     = one(aws_lambda_function.auth_api[0].environment).variables["REFRESH_TOKEN_KEY_SECRET_ID"] == one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn)
+    error_message = "auth_api's REFRESH_TOKEN_KEY_SECRET_ID env var should point at the refresh-token secret, matching lambda-src's refreshToken.ts."
+  }
+
+  assert {
+    condition     = one(aws_lambda_function.auth_api[0].environment).variables["REFRESH_TOKEN_TTL_SECONDS"] == "2592000"
+    error_message = "auth_api's REFRESH_TOKEN_TTL_SECONDS should be 2,592,000 seconds (30 days), matching auth_site's refresh_token_validity."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn))
+    error_message = "auth_api's role should be able to GetSecretValue on the refresh-token key -- it wraps/unwraps the refresh-token grant container."
+  }
+}
+
+run "auth_site_client_rotates_refresh_tokens_with_a_bounded_grace_period" {
+  command = plan
+
+  assert {
+    condition = (
+      one(aws_cognito_user_pool_client.auth_site[*].refresh_token_rotation)[0].feature == "ENABLED" &&
+      one(aws_cognito_user_pool_client.auth_site[*].refresh_token_rotation)[0].retry_grace_period_seconds == 60
+    )
+    error_message = "auth_site's client should have native refresh-token rotation enabled with the maximum 60-second retry grace period."
+  }
+
+  assert {
+    condition = (
+      one(aws_cognito_user_pool_client.auth_site[*].refresh_token_validity) == 30 &&
+      one(aws_cognito_user_pool_client.auth_site[*].token_validity_units)[0].refresh_token == "days"
+    )
+    error_message = "auth_site's refresh token should be explicitly valid for 30 days, matching auth_api's REFRESH_TOKEN_TTL_SECONDS."
+  }
+}
+
 run "verification_code_ttl_and_max_attempts_overrides_are_plumbed_through" {
   command = plan
 

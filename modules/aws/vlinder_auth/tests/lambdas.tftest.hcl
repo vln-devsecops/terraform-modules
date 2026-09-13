@@ -323,7 +323,7 @@ run "rotate_secret_lambda_shares_the_same_zip_and_handler_path" {
   }
 }
 
-run "rotate_secret_role_can_only_write_the_two_rotatable_secrets" {
+run "rotate_secret_role_can_only_write_the_three_rotatable_secrets" {
   command = plan
 
   assert {
@@ -337,9 +337,10 @@ run "rotate_secret_role_can_only_write_the_two_rotatable_secrets" {
   assert {
     condition = (
       strcontains(aws_iam_policy.rotate_secret[0].policy, one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)) &&
-      strcontains(aws_iam_policy.rotate_secret[0].policy, one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn))
+      strcontains(aws_iam_policy.rotate_secret[0].policy, one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)) &&
+      strcontains(aws_iam_policy.rotate_secret[0].policy, one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn))
     )
-    error_message = "rotate_secret's PutSecretValue grant should be scoped to exactly the two secrets it rotates, not a wildcard."
+    error_message = "rotate_secret's PutSecretValue grant should be scoped to exactly the three secrets it rotates, not a wildcard."
   }
 }
 
@@ -349,9 +350,10 @@ run "rotation_schedules_target_rotate_secret_with_the_right_input" {
   assert {
     condition = (
       one(aws_scheduler_schedule.rotate_auth_session_signing_key[*].schedule_expression) == "rate(30 days)" &&
-      one(aws_scheduler_schedule.rotate_auth_one_time_token_key[*].schedule_expression) == "rate(30 days)"
+      one(aws_scheduler_schedule.rotate_auth_one_time_token_key[*].schedule_expression) == "rate(30 days)" &&
+      one(aws_scheduler_schedule.rotate_auth_refresh_token_key[*].schedule_expression) == "rate(30 days)"
     )
-    error_message = "Both rotation schedules should fire every 30 days -- an adopter should never need to redeploy just to rotate a key."
+    error_message = "All three rotation schedules should fire every 30 days -- an adopter should never need to redeploy just to rotate a key."
   }
 
   assert {
@@ -372,10 +374,19 @@ run "rotation_schedules_target_rotate_secret_with_the_right_input" {
 
   assert {
     condition = (
-      one(aws_scheduler_schedule.rotate_auth_session_signing_key[*].target)[0].arn == aws_lambda_function.rotate_secret[0].arn &&
-      one(aws_scheduler_schedule.rotate_auth_one_time_token_key[*].target)[0].arn == aws_lambda_function.rotate_secret[0].arn
+      jsondecode(one(aws_scheduler_schedule.rotate_auth_refresh_token_key[*].target)[0].input).secretId == one(aws_secretsmanager_secret.auth_refresh_token_key[*].id) &&
+      jsondecode(one(aws_scheduler_schedule.rotate_auth_refresh_token_key[*].target)[0].input).passwordLength == 32
     )
-    error_message = "Both schedules should target the same rotate_secret Lambda -- it isn't hardcoded to one secret."
+    error_message = "The refresh-token-key schedule should target that secret specifically, with the exact 32-byte length A256GCM's dir mode requires."
+  }
+
+  assert {
+    condition = (
+      one(aws_scheduler_schedule.rotate_auth_session_signing_key[*].target)[0].arn == aws_lambda_function.rotate_secret[0].arn &&
+      one(aws_scheduler_schedule.rotate_auth_one_time_token_key[*].target)[0].arn == aws_lambda_function.rotate_secret[0].arn &&
+      one(aws_scheduler_schedule.rotate_auth_refresh_token_key[*].target)[0].arn == aws_lambda_function.rotate_secret[0].arn
+    )
+    error_message = "All three schedules should target the same rotate_secret Lambda -- it isn't hardcoded to one secret."
   }
 }
 
@@ -390,7 +401,8 @@ run "rotation_infra_is_omitted_for_the_identity_only_profile" {
     condition = (
       length(aws_lambda_function.rotate_secret) == 0 &&
       length(aws_scheduler_schedule.rotate_auth_session_signing_key) == 0 &&
-      length(aws_scheduler_schedule.rotate_auth_one_time_token_key) == 0
+      length(aws_scheduler_schedule.rotate_auth_one_time_token_key) == 0 &&
+      length(aws_scheduler_schedule.rotate_auth_refresh_token_key) == 0
     )
     error_message = "No rotation infrastructure should be provisioned in the identity_only profile -- there is no public auth API, so no rotatable secrets either."
   }
