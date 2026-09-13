@@ -21,15 +21,11 @@ exactly the mechanism CSRF exploits).
 The admin API carries **double-submit CSRF protection, always on** — not
 deferred until a form-submittable route appears.
 
-This is a change from the earlier position, which was to rely on `SameSite`
-plus an enforced no-`POST`-routes invariant and build double-submit only when
-something actually needed it. That reasoning was sound while the exposure was
-conditional and the admin API was the only cookie-authenticated surface in the
-system. It stopped being sound once cookie-only became the default token
-delivery for every consuming application's BFF (see `node-vlinder-auth`'s
-`doc/rationale.md`): cookie authentication is now the normal case across the
-whole system, so it gets one posture, implemented once, reviewed once, rather
-than a strong default in one place and a conditional exception here.
+Cookie authentication is the normal case across the whole system now that
+cookie-only is the default token delivery for every consuming application's
+BFF (see `node-vlinder-auth`'s `doc/rationale.md`), so this gets one posture,
+implemented once, reviewed once, rather than a strong default in one place
+and a conditional exception here.
 
 `SameSite` alone is not something to lean on as the primary defence either —
 it depends on every current and future browser enforcing it correctly.
@@ -87,6 +83,30 @@ Two things are **kept**, not replaced, now that double-submit is in place:
 
 ## Status
 
-Not yet implemented — this documents the agreed design, and the work is
-tracked as step 8a of `node-vlinder-auth`'s `doc/plan.md`, sequenced after the
-reference BFF establishes the scheme both surfaces share.
+Implemented, as step 8a of `node-vlinder-auth`'s `doc/plan.md`.
+
+- **This repo (terraform-modules)**: `templates/admin_api_rewrite.js` performs
+  the double-submit check described above, and
+  `aws_secretsmanager_secret.admin_api_csrf_secret` in `main.tf` provisions
+  the shared HMAC key, wired to `auth_api` via the `ADMIN_API_CSRF_SECRET_ID`
+  environment variable. `admin_api_never_exposes_a_post_route` is kept
+  unchanged, per "Defence in depth that stays" above.
+- **`node-vlinder-auth`**: mints the `vln_auth_csrf` cookie (session-scoped,
+  `HMAC(session-id, csrf-secret)`) and the SPA echoes it in the
+  `X-Vln-Csrf-Token` header on every state-changing request.
+
+### A note on rotation
+
+`admin_api_csrf_secret` is rotated on the same 30-day schedule as this
+module's other auth secrets (`aws_scheduler_schedule.rotate_admin_api_csrf_secret`),
+but its rotation-tolerance story is different from theirs, and deliberately
+simpler: nothing ever re-reads `AWSPREVIOUS` for this secret. Verification is
+a pure string comparison at the edge that never touches Secrets Manager at
+all — it only compares a cookie to a header, both already on the request.
+Rotating the secret only changes what key mints *new* `vln_auth_csrf` cookies
+going forward; a cookie already issued stays internally self-consistent (its
+own value still equals `HMAC(session-id, whichever secret minted it)`) and
+keeps matching the header the SPA echoes back, regardless of which secret
+version was current when it was minted. There is no "current+previous" fetch
+pattern to build here, unlike `auth_session_signing_key` and friends, because
+there is no verification step that would ever need one.

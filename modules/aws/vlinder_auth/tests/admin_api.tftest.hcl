@@ -76,6 +76,15 @@ mock_provider "aws" {
       arn = "arn:aws:kms:us-east-1:123456789012:key/00000000-0000-0000-0000-000000000000"
     }
   }
+
+  # auth_api's and rotate_secret's own IAM policies interpolate this secret's
+  # ARN; without a plan-time default the whole jsonencoded policy string
+  # becomes unknown and the strcontains assertions below can't evaluate.
+  mock_resource "aws_secretsmanager_secret" {
+    defaults = {
+      arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:placeholder"
+    }
+  }
 }
 
 mock_provider "archive" {
@@ -222,5 +231,65 @@ run "admin_api_never_exposes_a_post_route" {
       for route in local.admin_api_routes : !startswith(route.route_key, "POST ")
     ])
     error_message = "The admin API must not expose a POST route: the CloudFront cookie-to-Authorization-header lift makes state-changing routes CSRF-relevant, and only non-form-submittable methods (PATCH/PUT/DELETE) keep that safe."
+  }
+}
+
+run "admin_api_csrf_secret_is_provisioned_and_wired_to_auth_api" {
+  command = plan
+
+  # See doc/admin-api-csrf.md: this secret is the shared HMAC key behind the
+  # vln_auth_csrf double-submit cookie. auth_api mints it (needs
+  # GetSecretValue); admin_api_rewrite.js's own check never reads the secret
+  # itself, only compares a header to a cookie already on the request.
+  assert {
+    condition     = length(aws_secretsmanager_secret.admin_api_csrf_secret) == 1
+    error_message = "The admin API CSRF secret should be provisioned whenever the public auth API is (same count gate as the other auth secrets)."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn))
+    error_message = "auth_api's role should be able to GetSecretValue on the admin-api CSRF secret -- it mints the vln_auth_csrf cookie's HMAC value."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.rotate_secret[0].policy, one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn))
+    error_message = "rotate_secret's role should be able to PutSecretValue on the admin-api CSRF secret, same as the module's other rotatable auth secrets."
+  }
+
+  assert {
+    condition     = one(aws_lambda_function.auth_api[0].environment).variables["ADMIN_API_CSRF_SECRET_ID"] == one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn)
+    error_message = "auth_api's ADMIN_API_CSRF_SECRET_ID env var should point at the admin-api CSRF secret, matching node-vlinder-auth's cookie-minting side."
+  }
+
+  assert {
+    condition     = length(aws_scheduler_schedule.rotate_admin_api_csrf_secret) == 1
+    error_message = "The admin API CSRF secret should be on the same recurring rotation schedule as the module's other auth secrets."
+  }
+}
+
+run "admin_api_rewrite_enforces_double_submit_csrf" {
+  command = plan
+
+  # strcontains against the compiled CloudFront Function source is this
+  # repo's established way of asserting on function *logic* -- see
+  # no_api_cloudfront_function_rewrites_a_uri in tests/admin_panel.tftest.hcl
+  # for the pattern. terraform test can't execute the function's JS runtime,
+  # so this is necessarily best-effort: it confirms the check's building
+  # blocks are present in the compiled code, not that the runtime behavior is
+  # correct end to end (see the standalone Node verification script run
+  # separately for that).
+  assert {
+    condition     = strcontains(aws_cloudfront_function.admin_api_rewrite[0].code, "vln_auth_csrf")
+    error_message = "admin_api_rewrite.js should read the vln_auth_csrf cookie as part of its double-submit CSRF check."
+  }
+
+  assert {
+    condition     = strcontains(aws_cloudfront_function.admin_api_rewrite[0].code, "x-vln-csrf-token")
+    error_message = "admin_api_rewrite.js should read the x-vln-csrf-token header as part of its double-submit CSRF check."
+  }
+
+  assert {
+    condition     = strcontains(aws_cloudfront_function.admin_api_rewrite[0].code, "403")
+    error_message = "admin_api_rewrite.js should reject a failed CSRF check with a 403 response."
   }
 }
