@@ -119,7 +119,7 @@ run "auth_api_routes_are_throttled_with_the_default_limits" {
   command = plan
 
   # The /api/v1/auth* CloudFront behavior (no function -- these routes are
-  # public and passed through unmodified) makes these 10 routes unauthenticated
+  # public and passed through unmodified) makes these 11 routes unauthenticated
   # by design -- see doc/auth-api-rate-limiting.md for why they're throttled
   # (aggregate, not per-IP) and default to a no-extra-cost burst/rate pair.
   assert {
@@ -136,6 +136,7 @@ run "auth_api_routes_are_throttled_with_the_default_limits" {
         "POST /api/v1/auth/identify", "POST /api/v1/auth/password", "POST /api/v1/auth/signup",
         "POST /api/v1/auth/confirm", "POST /api/v1/auth/resend", "POST /api/v1/auth/forgot", "POST /api/v1/auth/reset",
         "GET /api/v1/auth/authorize", "POST /api/v1/auth/token", "POST /api/v1/auth/refresh",
+        "GET /api/v1/auth/whoami",
       ] :
       contains([for route in local.auth_api_routes : route.route_key], route_key)
     ])
@@ -148,8 +149,8 @@ run "auth_api_routes_are_throttled_with_the_default_limits" {
   # any real route_key -- contains() alone only checks the list names above
   # are present, not that the two sides have the same length.
   assert {
-    condition     = length(local.auth_api_routes) == 10
-    error_message = "local.auth_api_routes should have exactly 10 entries -- if this fails after adding a new auth-api route, add its route_key to the list above too."
+    condition     = length(local.auth_api_routes) == 11
+    error_message = "local.auth_api_routes should have exactly 11 entries -- if this fails after adding a new auth-api route, add its route_key to the list above too."
   }
 }
 
@@ -411,4 +412,86 @@ run "ses_configuration_is_required_whenever_the_public_auth_api_is_provisioned" 
     check.ses_configuration_required_for_public_auth_api,
     aws_lambda_function.auth_api,
   ]
+}
+
+run "auth_api_role_and_env_can_resolve_whoami_privileges" {
+  command = plan
+
+  # GET /whoami validates the caller's own access token via Cognito's
+  # (non-Admin) GetUser, then resolves their role assignments/privileges via
+  # the same tables pre_token_generation and admin_api read -- see
+  # aws_iam_policy.auth_api's whoami-related statements for why this is
+  # narrower than admin_api's (Query, not Scan; GetItem, not Scan).
+  #
+  # The file-level aws_dynamodb_table mock gives every table the *same*
+  # placeholder ARN, so strcontains-against-the-real-ARN assertions below
+  # would pass even if the resource were wired to a different table
+  # entirely -- give role_assignments and roles distinct ARNs here (same
+  # technique as admin_api_csrf_secret_is_provisioned_and_wired_to_auth_api
+  # in tests/admin_api.tftest.hcl) so the assertions -- especially the
+  # final one distinguishing "granted on these two tables" from "granted on
+  # verification_codes" -- actually mean something.
+  override_resource {
+    target          = module.user_role_assignments.aws_dynamodb_table.this
+    override_during = plan
+    values = {
+      arn = "arn:aws:dynamodb:us-east-1:123456789012:table/role-assignments-distinct"
+    }
+  }
+
+  override_resource {
+    target          = aws_dynamodb_table.roles
+    override_during = plan
+    values = {
+      arn = "arn:aws:dynamodb:us-east-1:123456789012:table/roles-distinct"
+    }
+  }
+
+  assert {
+    condition = (
+      one(aws_lambda_function.auth_api[0].environment).variables["ROLE_ASSIGNMENTS_TABLE_NAME"] == module.user_role_assignments.table_name &&
+      one(aws_lambda_function.auth_api[0].environment).variables["ROLES_TABLE_NAME"] == aws_dynamodb_table.roles.name
+    )
+    error_message = "auth_api's environment variables should carry ROLE_ASSIGNMENTS_TABLE_NAME/ROLES_TABLE_NAME, matching lambda-src's whoami handler."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, "cognito-idp:GetUser")
+    error_message = "auth_api's role should be able to call the non-Admin Cognito GetUser to validate the caller's own access token for /whoami."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, module.user_role_assignments.table_arn)
+    error_message = "auth_api's role should be able to access the role_assignments table for /whoami's privilege resolution."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, aws_dynamodb_table.roles.arn)
+    error_message = "auth_api's role should be able to access the roles table for /whoami's privilege resolution."
+  }
+
+  # auth_api only ever reads a specific user's own assignments and a
+  # specific role's own definition -- never lists or mutates role data, so
+  # none of these actions should ever appear granted to it, unlike admin_api.
+  assert {
+    condition     = !strcontains(aws_iam_policy.auth_api[0].policy, "dynamodb:Scan")
+    error_message = "auth_api's role should never be granted dynamodb:Scan -- it has no need to list either the role_assignments or roles tables."
+  }
+
+  # verification_codes legitimately gets full CRUD (see
+  # auth_api_role_owns_verification_codes_end_to_end above), so a blanket
+  # "no PutItem/DeleteItem anywhere in the policy" check would false-fail --
+  # this inspects the decoded policy statements to confirm specifically that
+  # no statement granting Scan/PutItem/DeleteItem names either the
+  # role_assignments or roles table ARN as a resource.
+  assert {
+    condition = alltrue([
+      for statement in jsondecode(aws_iam_policy.auth_api[0].policy).Statement :
+      !(
+        anytrue([for action in statement.Action : contains(["dynamodb:Scan", "dynamodb:PutItem", "dynamodb:DeleteItem"], action)]) &&
+        anytrue([for resource in statement.Resource : contains([module.user_role_assignments.table_arn, aws_dynamodb_table.roles.arn], resource)])
+      )
+    ])
+    error_message = "auth_api's role must never be granted Scan/PutItem/DeleteItem on the role_assignments or roles tables -- it only reads a specific user's own assignments and a specific role's own definition."
+  }
 }

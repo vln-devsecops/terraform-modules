@@ -1595,6 +1595,11 @@ resource "aws_iam_policy" "auth_api" {
           "cognito-idp:SignUp",
           "cognito-idp:AdminGetUser",
           "cognito-idp:AdminSetUserPassword",
+          # /whoami validates the caller's own access token by presenting it
+          # back to Cognito -- this is the caller's credential, not an admin
+          # action on their behalf, hence the non-Admin GetUser rather than
+          # AdminGetUser above.
+          "cognito-idp:GetUser",
         ]
         Resource = [aws_cognito_user_pool.this.arn]
       },
@@ -1645,18 +1650,37 @@ resource "aws_iam_policy" "auth_api" {
         Action   = ["dynamodb:Query"]
         Resource = ["${aws_dynamodb_table.tenants.arn}/index/clientId-index"]
       },
+      # /whoami resolves the caller's own privileges via the same
+      # resolvePrivilegesForUser/resolveUserRoleAssignments/getRoleDefinition
+      # path admin_api uses (see aws_iam_policy.admin_api), but narrower:
+      # resolveUserRoleAssignments queries role_assignments by userId (its
+      # own hash key, no GSI needed) and getRoleDefinition does a single-item
+      # GetItem by roleId -- auth_api never lists the whole role catalog or
+      # a user's assignments across tenants the way the admin API does, so
+      # no Scan and no GSI access here.
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query"]
+        Resource = [module.user_role_assignments.table_arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem"]
+        Resource = [aws_dynamodb_table.roles.arn]
+      },
       # This function's own environment variables are encrypted with
       # aws_kms_key.this, same as every other Lambda in this module, and it
       # also needs kms:Decrypt on the verification_codes table's own CMK
       # (DynamoDB requires the *caller* to hold KMS permissions on the
       # table's key -- see the matching statement on
       # aws_iam_policy.pre_token_generation for the full rationale) plus the
-      # CMK-encrypted session-signing secret above. The tenants table shares
-      # aws_kms_key.this, already covered.
+      # CMK-encrypted session-signing secret above. The tenants and roles
+      # tables share aws_kms_key.this, already covered; role_assignments has
+      # its own dedicated key.
       {
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
-        Resource = [aws_kms_key.this.arn, one(module.verification_codes[*].kms_key_arn)]
+        Resource = [aws_kms_key.this.arn, one(module.verification_codes[*].kms_key_arn), module.user_role_assignments.kms_key_arn]
       },
     ]
   })
@@ -1707,6 +1731,8 @@ resource "aws_lambda_function" "auth_api" {
       VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
       VERIFICATION_CODE_MAX_ATTEMPTS = tostring(var.verification_code_max_attempts)
       SES_FROM_ADDRESS               = try(var.ses_configuration.from_email_address, "")
+      ROLE_ASSIGNMENTS_TABLE_NAME    = module.user_role_assignments.table_name
+      ROLES_TABLE_NAME               = aws_dynamodb_table.roles.name
     }
   }
 
@@ -1819,6 +1845,14 @@ locals {
     }
     refresh = {
       route_key              = "POST /api/v1/auth/refresh"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
+    }
+    whoami = {
+      route_key              = "GET /api/v1/auth/whoami"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
