@@ -1251,6 +1251,54 @@ resource "null_resource" "auth_refresh_token_key_seed" {
   depends_on = [aws_secretsmanager_secret.auth_refresh_token_key]
 }
 
+# The admin API's double-submit CSRF defence (see doc/admin-api-csrf.md) --
+# an HMAC-SHA256 key shared between auth_api (which mints the vln_auth_csrf
+# cookie as HMAC(session-id, this secret) in node-vlinder-auth) and
+# templates/admin_api_rewrite.js (which only ever compares that cookie's
+# value to the X-Vln-Csrf-Token header, never touching this secret at all).
+# Unlike the three secrets above, there's no fixed-byte-count requirement to
+# satisfy: an HMAC-SHA256 key works at any length, so --password-length 64
+# below is just "generous entropy", not a decoding constraint -- there's no
+# --exclude-punctuation/--require-each-included-type reasoning to carry over
+# from those secrets, since that reasoning exists solely to guarantee an
+# exact raw-byte count for a fixed-size AES key, a constraint that doesn't
+# apply to a key that's hashed, not decoded, on the consuming side.
+resource "aws_secretsmanager_secret" "admin_api_csrf_secret" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  # checkov:skip=CKV2_AWS_57:Rotation is handled by aws_scheduler_schedule.auth_secret_rotation invoking rotate_secret below, not aws_secretsmanager_secret_rotation
+  name       = "${var.app_name}-${var.deployment_environment}-auth-admin-api-csrf-secret"
+  kms_key_id = aws_kms_key.this.id
+
+  tags = merge(local.common_tags, { rg = "security" })
+}
+
+resource "null_resource" "admin_api_csrf_secret_seed" {
+  count = local.create_public_auth_api ? 1 : 0
+
+  # Bootstrap only -- see the matching comment on
+  # null_resource.auth_session_signing_key_seed above. Ongoing rotation is
+  # aws_scheduler_schedule.rotate_admin_api_csrf_secret below.
+  triggers = {
+    secret_id = one(aws_secretsmanager_secret.admin_api_csrf_secret[*].id)
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
+      set -euo pipefail
+      RANDOM_VALUE="$(aws secretsmanager get-random-password \
+        --password-length 64 \
+        --output text --query RandomPassword)"
+      aws secretsmanager put-secret-value \
+        --secret-id "${one(aws_secretsmanager_secret.admin_api_csrf_secret[*].id)}" \
+        --secret-string "$RANDOM_VALUE"
+    EOT
+  }
+
+  depends_on = [aws_secretsmanager_secret.admin_api_csrf_secret]
+}
+
 # Rotates auth_session_signing_key and auth_one_time_token_key on a
 # recurring schedule (aws_scheduler_schedule below) rather than only at
 # `terraform apply` time, so an adopter isn't required to redeploy just to
@@ -1294,6 +1342,7 @@ resource "aws_iam_policy" "rotate_secret" {
           one(aws_secretsmanager_secret.auth_session_signing_key[*].arn),
           one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn),
           one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn),
+          one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn),
         ]
       },
       # Writing a new value to a CMK-encrypted secret needs GenerateDataKey
@@ -1456,6 +1505,32 @@ resource "aws_scheduler_schedule" "rotate_auth_refresh_token_key" {
   }
 }
 
+# admin_api_csrf_secret's rotation has no "current+previous" verification
+# tolerance to worry about (see doc/admin-api-csrf.md) -- rotating it only
+# changes what mints new vln_auth_csrf cookies going forward, so 64 (its own
+# generous-entropy length, not a decoding constraint) is simply passed
+# through the same way passwordLength is for the other three schedules.
+resource "aws_scheduler_schedule" "rotate_admin_api_csrf_secret" {
+  # checkov:skip=CKV_AWS_297:Same reasoning as rotate_auth_session_signing_key above -- stored input is a secret ARN and password length, not secret material.
+  count = local.create_public_auth_api ? 1 : 0
+
+  name                = "${var.app_name}-${var.deployment_environment}-rotate-admin-api-csrf-secret"
+  schedule_expression = "rate(30 days)"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.rotate_secret[0].arn
+    role_arn = aws_iam_role.rotate_secret_scheduler[0].arn
+    input = jsonencode({
+      secretId       = one(aws_secretsmanager_secret.admin_api_csrf_secret[*].id)
+      passwordLength = 64
+    })
+  }
+}
+
 # Signup and password-reset codes, generated/verified by auth_api itself
 # rather than Cognito's own email-verification mechanism (see node-vlinder-
 # auth/doc/plan-auth-chrome-and-verification-codes.md). Short-TTL and
@@ -1530,6 +1605,10 @@ resource "aws_iam_policy" "auth_api" {
           one(aws_secretsmanager_secret.auth_session_signing_key[*].arn),
           one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn),
           one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn),
+          # Mint-only: auth_api reads this to compute the vln_auth_csrf
+          # cookie's HMAC value when it mints a session. Nothing ever reads
+          # AWSPREVIOUS for it -- see doc/admin-api-csrf.md's rotation note.
+          one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn),
         ]
       },
       {
@@ -1622,6 +1701,7 @@ resource "aws_lambda_function" "auth_api" {
       SESSION_SIGNING_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
       ONE_TIME_TOKEN_KEY_SECRET_ID   = one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)
       REFRESH_TOKEN_KEY_SECRET_ID    = one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn)
+      ADMIN_API_CSRF_SECRET_ID       = one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn)
       REFRESH_TOKEN_TTL_SECONDS      = "2592000"
       VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
       VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
@@ -1637,6 +1717,7 @@ resource "aws_lambda_function" "auth_api" {
     null_resource.auth_session_signing_key_seed,
     null_resource.auth_one_time_token_key_seed,
     null_resource.auth_refresh_token_key_seed,
+    null_resource.admin_api_csrf_secret_seed,
   ]
 
   lifecycle {
