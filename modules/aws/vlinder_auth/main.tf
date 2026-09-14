@@ -1794,6 +1794,37 @@ locals {
       throttling_rate_limit  = var.auth_api_throttling.rate_limit
       authorization_type     = "CUSTOM"
     }
+    # authorize/token/refresh (the RP handoff, steps 6-7 of node-vlinder-auth's
+    # doc/plan.md) were implemented and tested at the Lambda-handler level but
+    # never actually added here -- a pre-existing gap, not part of any single
+    # step's own diff, caught while researching step 9. Without these, the
+    # OIDC discovery document's own authorization_endpoint/token_endpoint
+    # (below, and in the auth_site_discovery_document local_file) point at
+    # routes that 404 in a real deployment, and /refresh has no route at all.
+    authorize = {
+      route_key              = "GET /api/v1/auth/authorize"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
+    }
+    token = {
+      route_key              = "POST /api/v1/auth/token"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
+    }
+    refresh = {
+      route_key              = "POST /api/v1/auth/refresh"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
+    }
   } : {}
 }
 

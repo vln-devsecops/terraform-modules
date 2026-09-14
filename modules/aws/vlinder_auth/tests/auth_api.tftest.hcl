@@ -119,7 +119,7 @@ run "auth_api_routes_are_throttled_with_the_default_limits" {
   command = plan
 
   # The /api/v1/auth* CloudFront behavior (no function -- these routes are
-  # public and passed through unmodified) makes these 7 routes unauthenticated
+  # public and passed through unmodified) makes these 10 routes unauthenticated
   # by design -- see doc/auth-api-rate-limiting.md for why they're throttled
   # (aggregate, not per-IP) and default to a no-extra-cost burst/rate pair.
   assert {
@@ -135,10 +135,21 @@ run "auth_api_routes_are_throttled_with_the_default_limits" {
       for route_key in [
         "POST /api/v1/auth/identify", "POST /api/v1/auth/password", "POST /api/v1/auth/signup",
         "POST /api/v1/auth/confirm", "POST /api/v1/auth/resend", "POST /api/v1/auth/forgot", "POST /api/v1/auth/reset",
+        "GET /api/v1/auth/authorize", "POST /api/v1/auth/token", "POST /api/v1/auth/refresh",
       ] :
       contains([for route in local.auth_api_routes : route.route_key], route_key)
     ])
     error_message = "The full public auth surface should be present in local.auth_api_routes."
+  }
+
+  # The inverse of the assertion above: catches a route that exists in the
+  # Lambda's own handler but was never added here (exactly the gap this test
+  # is being extended to close) as well as one added here that doesn't match
+  # any real route_key -- contains() alone only checks the list names above
+  # are present, not that the two sides have the same length.
+  assert {
+    condition     = length(local.auth_api_routes) == 10
+    error_message = "local.auth_api_routes should have exactly 10 entries -- if this fails after adding a new auth-api route, add its route_key to the list above too."
   }
 }
 
