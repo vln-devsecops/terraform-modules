@@ -23,7 +23,7 @@ module "vpc" {
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
+| ------ | ------------- | ------ | --------- | :--------: |
 | `app_name` | Application name. Used as a tag value on all resources. | `string` | — | yes |
 | `deployment_environment` | Deployment environment (e.g. dev, staging, prod). Used as a tag value on all resources. | `string` | — | yes |
 | `vpc_cidr` | CIDR block for the VPC. | `string` | `"10.0.0.0/16"` | no |
@@ -36,7 +36,7 @@ module "vpc" {
 ## Outputs
 
 | Name | Description |
-|------|-------------|
+| ------ | ------------- |
 | `vpc_id` | ID of the created VPC. |
 | `vpc_cidr` | CIDR block of the created VPC. |
 | `public_subnet_ids` | List of public subnet IDs in the same order as `public_subnet_cidrs`. |
