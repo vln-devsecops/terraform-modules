@@ -32,7 +32,8 @@ module "authorizer" {
   jwt_audience       = aws_cognito_user_pool_client.this.id
   jwt_forward_claims = ["tenantId", "permissions"]
 
-  kms_key_arn = aws_kms_key.this.arn
+  kms_key_arn       = aws_kms_key.this.arn
+  create_kms_policy = true
 }
 
 module "admin_api" {
@@ -83,6 +84,8 @@ For an origin-check-only authorizer (no JWT -- e.g. a public API you still want 
 ## Inputs
 
 See `variables.tf`. Only `name` is required; `require_jwt` defaults to `false` (origin-check only). `jwt_issuer_url`/`jwt_audience` are required when `require_jwt = true` -- this isn't enforced by a Terraform validation block, but the Lambda itself fails clearly (`Missing required environment variable: JWT_ISSUER_URL`) if they're left unset while `require_jwt` is true.
+
+`create_kms_policy` (bool, default `null`) controls whether the Lambda's IAM role gets an explicit `kms:Decrypt`/`kms:GenerateDataKey`/`kms:DescribeKey` grant on `kms_key_arn`. Left at its default, it infers the old behavior (grant iff `kms_key_arn` is set) -- but if your `kms_key_arn` is itself computed in the same apply as this module call (e.g. a CMK created alongside it, as `vlinder_auth` does), that inference can't be evaluated at plan time and Terraform errors out; pass `create_kms_policy = true` explicitly in that case, as in the example above. Without the grant, the Lambda still encrypts its environment variables under the CMK, but its execution role can't decrypt them, and the authorizer fails at invoke time with a KMS `AccessDenied` error -- so if you set `kms_key_arn`, you almost always want `create_kms_policy = true` too.
 
 ## Outputs
 
