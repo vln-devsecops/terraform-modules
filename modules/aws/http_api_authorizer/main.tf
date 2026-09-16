@@ -71,7 +71,7 @@ resource "aws_iam_role_policy_attachment" "logging" {
 # caller-supplied CMK -- the KMS key's own policy alone isn't enough; see the
 # identical gotcha called out in vlinder_auth/main.tf's auth_api IAM policy.
 resource "aws_iam_policy" "kms" {
-  count = var.create_kms_policy ? 1 : 0
+  count = (var.create_kms_policy != null ? var.create_kms_policy : var.kms_key_arn != null) ? 1 : 0
 
   name = "${var.name}-authorizer-kms"
 
@@ -90,7 +90,7 @@ resource "aws_iam_policy" "kms" {
 }
 
 resource "aws_iam_role_policy_attachment" "kms" {
-  count = var.create_kms_policy ? 1 : 0
+  count = (var.create_kms_policy != null ? var.create_kms_policy : var.kms_key_arn != null) ? 1 : 0
 
   role       = aws_iam_role.this.name
   policy_arn = aws_iam_policy.kms[0].arn

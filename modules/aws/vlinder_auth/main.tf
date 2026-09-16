@@ -1068,6 +1068,11 @@ module "admin_api_authorizer" {
   jwt_audience       = one(aws_cognito_user_pool_client.auth_site[*].id)
   jwt_forward_claims = ["tenants", "scope"]
 
+  # create_kms_policy must be explicit (true), not left to infer from
+  # kms_key_arn's nullness: aws_kms_key.this.arn is created in this same
+  # module instance/apply, so it's "(known after apply)" on a first-time
+  # deployment -- http_api_authorizer's inference path can't evaluate that
+  # at plan time (see its variables.tf), only a plan-time-known literal can.
   kms_key_arn       = aws_kms_key.this.arn
   create_kms_policy = true
 
@@ -1869,6 +1874,8 @@ module "auth_api_authorizer" {
 
   name = "${var.app_name}-${var.deployment_environment}-auth-api"
 
+  # create_kms_policy must be explicit -- see the identical comment on the
+  # admin_api_authorizer call above.
   kms_key_arn       = aws_kms_key.this.arn
   create_kms_policy = true
 

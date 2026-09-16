@@ -39,13 +39,35 @@ variable "kms_key_arn" {
   default     = null
 }
 
+# Left null (the default), the aws_iam_policy.kms/aws_iam_role_policy_attachment.kms
+# count below infers "create the grant" from kms_key_arn's nullness -- the
+# original, pre-this-variable behavior, which is correct for any caller
+# whose kms_key_arn is a statically-known value (the common case).
+#
+# That inference breaks, though, when count/for_each has to evaluate it: it
+# requires kms_key_arn's nullness to be knowable at plan time, but a
+# caller-supplied kms_key_arn is sometimes itself a same-apply-computed
+# value -- e.g. vlinder_auth's two callers of this module pass
+# aws_kms_key.this.arn, a CMK created in the same module instance in the
+# same apply, which is "(known after apply)" on a from-scratch deployment.
+# Terraform can't evaluate `!= null` against that, so count itself becomes
+# unknown and Terraform hard-errors with "Invalid count argument ...
+# depends on resource attributes that cannot be determined until apply".
+#
+# Explicitly setting create_kms_policy to true or false sidesteps this: a
+# literal true/false is knowable at plan time regardless of whether
+# kms_key_arn itself is, so a caller in vlinder_auth's position (unknown
+# kms_key_arn, but the caller knows statically it wants the grant) can opt
+# in with create_kms_policy = true. A caller who leaves it null AND passes
+# an unknown kms_key_arn still hits the original error -- not a regression,
+# just the pre-existing bug for anyone who doesn't opt in.
 variable "create_kms_policy" {
-  description = "Whether to create the IAM policy/attachment granting this Lambda's role kms:Decrypt on kms_key_arn. Must be set explicitly (not inferred from kms_key_arn's nullness) because count/for_each must be knowable at plan time, and a caller-supplied kms_key_arn is often itself a same-apply-computed value (e.g. a CMK created in the same module instance) -- see the vlinder_auth module's two callers of this module for exactly that case."
+  description = "Whether to create the IAM policy/attachment granting this Lambda's role kms:Decrypt on kms_key_arn. Null (default) infers this from kms_key_arn's nullness; set explicitly when kms_key_arn is itself unknown at plan time (see comment above)."
   type        = bool
-  default     = false
+  default     = null
 
   validation {
-    condition     = !var.create_kms_policy || var.kms_key_arn != null
+    condition     = var.create_kms_policy != true || var.kms_key_arn != null
     error_message = "create_kms_policy requires a non-null kms_key_arn."
   }
 }
