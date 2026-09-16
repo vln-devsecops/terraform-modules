@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/vln-devsecops/terraform-modules/compare/v1.2.1...v1.2.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* **http_api_authorizer:** decouple KMS policy count from kms_key_arn nullness ([#309](https://github.com/vln-devsecops/terraform-modules/issues/309)) ([437c862](https://github.com/vln-devsecops/terraform-modules/commit/437c86215c8189402e968fe80f8b4569109d3390))
+
 ## [1.2.1](https://github.com/vln-devsecops/terraform-modules/compare/v1.2.0...v1.2.1) (2026-09-09)
 
 
