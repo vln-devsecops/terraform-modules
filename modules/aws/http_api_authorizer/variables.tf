@@ -39,6 +39,17 @@ variable "kms_key_arn" {
   default     = null
 }
 
+variable "create_kms_policy" {
+  description = "Whether to create the IAM policy/attachment granting this Lambda's role kms:Decrypt on kms_key_arn. Must be set explicitly (not inferred from kms_key_arn's nullness) because count/for_each must be knowable at plan time, and a caller-supplied kms_key_arn is often itself a same-apply-computed value (e.g. a CMK created in the same module instance) -- see the vlinder_auth module's two callers of this module for exactly that case."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.create_kms_policy || var.kms_key_arn != null
+    error_message = "create_kms_policy requires a non-null kms_key_arn."
+  }
+}
+
 variable "tags" {
   description = "Tags to apply to created resources."
   type        = map(string)

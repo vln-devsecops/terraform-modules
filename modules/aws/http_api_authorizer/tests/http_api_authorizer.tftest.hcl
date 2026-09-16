@@ -136,17 +136,53 @@ run "no_kms_policy_without_a_kms_key" {
   }
 }
 
-run "kms_policy_grants_decrypt_on_the_supplied_key" {
+run "no_kms_policy_when_kms_key_set_but_create_kms_policy_false" {
   command = plan
 
+  # count/for_each must be knowable at plan time, so this module can't infer
+  # "create the KMS policy" from kms_key_arn's nullness -- a caller-supplied
+  # kms_key_arn is often itself computed in the same apply (e.g. a CMK
+  # created alongside this module, as vlinder_auth does). create_kms_policy
+  # defaults to false and must be requested explicitly; this locks in that
+  # the policy/attachment are NOT created just because kms_key_arn is set.
   variables {
     name        = "myapp-prod-auth-api"
     kms_key_arn = "arn:aws:kms:eu-west-1:123456789012:key/00000000-0000-0000-0000-000000000000"
   }
 
   assert {
+    condition     = length(aws_iam_policy.kms) == 0
+    error_message = "No KMS policy should be created when create_kms_policy is false, regardless of kms_key_arn."
+  }
+
+  assert {
+    condition     = length(aws_iam_role_policy_attachment.kms) == 0
+    error_message = "No KMS policy attachment should be created when create_kms_policy is false, regardless of kms_key_arn."
+  }
+
+  assert {
+    condition     = aws_lambda_function.this.kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+    error_message = "Lambda should still be encrypted with the supplied CMK even when create_kms_policy is false."
+  }
+}
+
+run "kms_policy_grants_decrypt_on_the_supplied_key" {
+  command = plan
+
+  variables {
+    name              = "myapp-prod-auth-api"
+    kms_key_arn       = "arn:aws:kms:eu-west-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+    create_kms_policy = true
+  }
+
+  assert {
     condition     = length(aws_iam_policy.kms) == 1
-    error_message = "Expected exactly one KMS policy when kms_key_arn is set."
+    error_message = "Expected exactly one KMS policy when create_kms_policy is true."
+  }
+
+  assert {
+    condition     = length(aws_iam_role_policy_attachment.kms) == 1
+    error_message = "Expected exactly one KMS policy attachment when create_kms_policy is true."
   }
 
   assert {

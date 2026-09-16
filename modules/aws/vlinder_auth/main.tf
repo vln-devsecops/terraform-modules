@@ -1068,7 +1068,8 @@ module "admin_api_authorizer" {
   jwt_audience       = one(aws_cognito_user_pool_client.auth_site[*].id)
   jwt_forward_claims = ["tenants", "scope"]
 
-  kms_key_arn = aws_kms_key.this.arn
+  kms_key_arn       = aws_kms_key.this.arn
+  create_kms_policy = true
 
   tags = local.common_tags
 }
@@ -1868,7 +1869,8 @@ module "auth_api_authorizer" {
 
   name = "${var.app_name}-${var.deployment_environment}-auth-api"
 
-  kms_key_arn = aws_kms_key.this.arn
+  kms_key_arn       = aws_kms_key.this.arn
+  create_kms_policy = true
 
   tags = local.common_tags
 }
