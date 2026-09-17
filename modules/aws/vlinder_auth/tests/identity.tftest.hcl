@@ -198,6 +198,11 @@ run "auth_site_client_uses_server_side_admin_auth_flow" {
   }
 
   assert {
+    condition     = !contains(one(aws_cognito_user_pool_client.auth_site[*].explicit_auth_flows), "ALLOW_REFRESH_TOKEN_AUTH")
+    error_message = "ALLOW_REFRESH_TOKEN_AUTH must not be listed explicitly when refresh_token_rotation is enabled; AWS rejects it (InvalidParameterException)."
+  }
+
+  assert {
     condition     = one(aws_cognito_user_pool_client.auth_site[*].allowed_oauth_flows_user_pool_client) == false
     error_message = "The auth site client must not use OAuth/hosted-UI redirect flows."
   }
