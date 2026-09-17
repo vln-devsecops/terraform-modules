@@ -208,7 +208,6 @@ resource "aws_cognito_user_pool_client" "auth_site" {
   allowed_oauth_flows_user_pool_client = false
   explicit_auth_flows = [
     "ALLOW_ADMIN_USER_PASSWORD_AUTH",
-    "ALLOW_REFRESH_TOKEN_AUTH",
   ]
 
   # Cognito's own refresh-token lifetime, made an explicit, named 30-day
@@ -1162,7 +1161,7 @@ resource "null_resource" "auth_session_signing_key_seed" {
         --output text --query RandomPassword)"
       aws secretsmanager put-secret-value \
         --secret-id "${one(aws_secretsmanager_secret.auth_session_signing_key[*].id)}" \
-        --secret-string "$RANDOM_VALUE"
+        --secret-string="$RANDOM_VALUE"
     EOT
   }
 
@@ -1209,7 +1208,7 @@ resource "null_resource" "auth_one_time_token_key_seed" {
         --output text --query RandomPassword)"
       aws secretsmanager put-secret-value \
         --secret-id "${one(aws_secretsmanager_secret.auth_one_time_token_key[*].id)}" \
-        --secret-string "$RANDOM_VALUE"
+        --secret-string="$RANDOM_VALUE"
     EOT
   }
 
@@ -1250,7 +1249,7 @@ resource "null_resource" "auth_refresh_token_key_seed" {
         --output text --query RandomPassword)"
       aws secretsmanager put-secret-value \
         --secret-id "${one(aws_secretsmanager_secret.auth_refresh_token_key[*].id)}" \
-        --secret-string "$RANDOM_VALUE"
+        --secret-string="$RANDOM_VALUE"
     EOT
   }
 
@@ -1298,7 +1297,7 @@ resource "null_resource" "admin_api_csrf_secret_seed" {
         --output text --query RandomPassword)"
       aws secretsmanager put-secret-value \
         --secret-id "${one(aws_secretsmanager_secret.admin_api_csrf_secret[*].id)}" \
-        --secret-string "$RANDOM_VALUE"
+        --secret-string="$RANDOM_VALUE"
     EOT
   }
 
