@@ -15,6 +15,7 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 - `modules/aws/*`: AWS-specific shared modules
 - `examples/aws/*`: runnable example configurations for AWS modules
 - `tests/aws/*`: reserved for higher-level integration suites
+- `doc/*`: cross-module conventions and gotchas (as opposed to a single module's own `doc/`, e.g. `modules/aws/vlinder_auth/doc/`) — see [`doc/local-exec-build-triggers.md`](doc/local-exec-build-triggers.md) for the first entry
 
 ## Current modules
 
