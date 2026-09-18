@@ -122,6 +122,26 @@ run "spa_is_deployed_and_configured_by_terraform_when_admin_panel_enabled" {
   }
 }
 
+run "auth_site_package_install_trigger_is_always_run_not_a_content_hash" {
+  command = plan
+
+  # Same "fresh checkout" bug as null_resource.lambda_package (see
+  # lambdas.tftest.hcl's matching assertion and this resource's own comment
+  # in main.tf): a package.json/package-lock.json content-hash trigger (the
+  # former package_json/package_lock/install_present keys) records "missing"
+  # on the very runner that performs the install, then a genuinely fresh
+  # runner also reads "missing", matches state, and the provisioner never
+  # runs -- archive_file then fails against a never-built site-build tree.
+  # This only pins the Terraform-side trigger shape (key names are known at
+  # plan time even though timestamp()'s value isn't); it can't exercise the
+  # actual ephemeral-runner failure, which is local-exec/shell behavior no
+  # mock provider runs.
+  assert {
+    condition     = length(keys(one(null_resource.auth_site_package[*].triggers))) == 1 && contains(keys(one(null_resource.auth_site_package[*].triggers)), "always_run")
+    error_message = "null_resource.auth_site_package's triggers must be exactly {always_run = timestamp()}, not a package_json/package_lock/install_present content-hash trigger."
+  }
+}
+
 run "config_json_carries_the_client_id_and_single_tenant_flag" {
   command = plan
 

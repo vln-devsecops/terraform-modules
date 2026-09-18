@@ -627,23 +627,34 @@ module "user_role_assignments" {
 # "<subdir>/handler.handler".
 
 resource "null_resource" "lambda_package" {
-  # install_present guards against a fresh checkout against existing remote
-  # state: the lockfile hash alone is unchanged there (it's the same file
-  # that produced the state), so without this the provisioner would never
-  # run and archive_file would zip a missing or stale local install. This is
-  # eventually consistent rather than exact -- the first apply after a fresh
-  # `npm ci` records the pre-install "missing" value, so the next plan (now
-  # seeing the installed tree) diffs once more and reinstalls a second,
-  # redundant time before settling on "present" -- an acceptable cost for a
-  # cheap, idempotent `npm ci --ignore-scripts`.
+  # A content-hash trigger (package_json/package_lock hashes, or the former
+  # install_present fileexists() check this replaced) looks correct on a
+  # persistent developer machine but breaks on a genuinely ephemeral CI
+  # runner -- exactly what infra's cd_refresh_vlinder_auth_demo workflow
+  # uses. On the very first apply that actually installs the package,
+  # fileexists() for the trigger is evaluated *before* the local-exec
+  # provisioner runs, so it records "missing" into state even though the
+  # install then succeeds. The next runner (a fresh filesystem every time --
+  # nothing persists between instances) also evaluates fileexists() as
+  # "missing", which matches what's already in state, so Terraform sees no
+  # trigger change and skips the provisioner entirely. archive_file then
+  # fails: "Archive creation error ... could not archive missing directory:
+  # .../lambda-build/node_modules/@vln-devsecops/auth-lambda/dist" -- the
+  # build never actually ran on that runner. Confirmed via a real failed
+  # cd_refresh_vlinder_auth_demo apply.
+  #
+  # always_run (re-evaluating every plan, with the command itself deciding
+  # whether to reinstall) is the fix already proven in contact_form/main.tf's
+  # identical null_resource -- see its comment for the full rationale on why
+  # the command, not the trigger, must own the idempotency check
+  # (byte-identical reinstalls still produce different archive_file hashes
+  # due to file timestamps).
   triggers = {
-    package_json    = filemd5("${path.module}/lambda-build/package.json")
-    package_lock    = filemd5("${path.module}/lambda-build/package-lock.json")
-    install_present = fileexists("${path.module}/lambda-build/node_modules/@vln-devsecops/auth-lambda/dist/post-confirmation/handler.js") ? "present" : "missing"
+    always_run = timestamp()
   }
 
   provisioner "local-exec" {
-    command = "npm ci --prefix ${path.module}/lambda-build --ignore-scripts"
+    command = "test -d ${path.module}/lambda-build/node_modules/@vln-devsecops/auth-lambda/dist || npm ci --prefix ${path.module}/lambda-build --ignore-scripts"
   }
 }
 
@@ -2022,18 +2033,21 @@ locals {
 resource "null_resource" "auth_site_package" {
   count = local.create_auth_site ? 1 : 0
 
-  # install_present guards against a fresh checkout against existing remote
-  # state -- see the matching comment on null_resource.lambda_package for why
-  # the lockfile hash alone isn't enough, and the (self-healing, one-time
-  # redundant reinstall) tradeoff this makes.
+  # See the matching comment on null_resource.lambda_package (and, for the
+  # full byte-identical-reinstall rationale, contact_form/main.tf's identical
+  # null_resource) for why this trigger is always_run rather than a
+  # package.json/package-lock.json content hash: the same "fresh checkout"
+  # bug applied here too -- the former install_present fileexists() trigger
+  # recorded "missing" on the very runner that performed the install, then a
+  # genuinely fresh runner also read "missing", matched state, and the
+  # provisioner never ran, leaving archive_file to fail against a
+  # never-built site-build/node_modules tree.
   triggers = {
-    package_json    = filemd5("${path.module}/site-build/package.json")
-    package_lock    = filemd5("${path.module}/site-build/package-lock.json")
-    install_present = fileexists("${path.module}/site-build/node_modules/@vln-devsecops/auth-site/dist/index.html") ? "present" : "missing"
+    always_run = timestamp()
   }
 
   provisioner "local-exec" {
-    command = "npm ci --prefix ${path.module}/site-build --ignore-scripts"
+    command = "test -d ${path.module}/site-build/node_modules/@vln-devsecops/auth-site/dist || npm ci --prefix ${path.module}/site-build --ignore-scripts"
   }
 }
 
