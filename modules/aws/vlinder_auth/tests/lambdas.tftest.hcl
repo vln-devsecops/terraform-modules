@@ -195,6 +195,30 @@ run "all_five_lambdas_share_the_same_zip" {
   }
 }
 
+run "lambda_package_install_trigger_is_always_run_not_a_content_hash" {
+  command = plan
+
+  # A package.json/package-lock.json content-hash trigger (the former
+  # package_json/package_lock/install_present keys) looks correct on a
+  # persistent developer machine but breaks on a genuinely ephemeral CI
+  # runner -- the first apply that actually installs the package records the
+  # pre-install fileexists() value ("missing") into state, and every
+  # following runner (fresh filesystem, nothing persists between instances)
+  # also reads "missing", matches state, and skips the provisioner entirely --
+  # archive_file then fails with "could not archive missing directory".
+  # Confirmed via a real failed cd_refresh_vlinder_auth_demo apply; see
+  # contact_form/main.tf's identical null_resource for the proven fix
+  # (always_run plus a shell-side `test -d` idempotency check). This
+  # assertion only pins the Terraform-side trigger shape -- the key names in
+  # a triggers map are known at plan time even though timestamp()'s value
+  # isn't -- it can't exercise the actual ephemeral-runner failure, which is
+  # local-exec/shell behavior no mock provider runs.
+  assert {
+    condition     = length(keys(null_resource.lambda_package.triggers)) == 1 && contains(keys(null_resource.lambda_package.triggers), "always_run")
+    error_message = "null_resource.lambda_package's triggers must be exactly {always_run = timestamp()}, not a package_json/package_lock/install_present content-hash trigger."
+  }
+}
+
 run "post_confirmation_env_vars_match_the_vendored_lambda_contract" {
   command = plan
 
