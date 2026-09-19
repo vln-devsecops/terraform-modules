@@ -39,6 +39,10 @@ module "dynamodb" {
   ]
   global_secondary_indices = []
   local_secondary_indices  = []
+
+  # This suite applies then destroys on every run; deletion protection would
+  # block that destroy.
+  deletion_protection_enabled = false
 }
 
 output "table_name" {

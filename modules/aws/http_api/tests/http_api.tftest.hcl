@@ -510,6 +510,48 @@ run "cors_configuration_is_applied_when_provided" {
   }
 }
 
+run "route_level_throttling_is_applied_only_to_routes_that_configure_it" {
+  command = plan
+
+  variables {
+    name = "throttled-api"
+    routes = {
+      signup = {
+        route_key              = "POST /auth/signup"
+        lambda_function_arn    = "arn:aws:lambda:eu-west-1:123456789012:function:signup"
+        lambda_function_name   = "signup"
+        throttling_burst_limit = 10
+        throttling_rate_limit  = 5
+      }
+      health = {
+        route_key            = "GET /health"
+        lambda_function_arn  = "arn:aws:lambda:eu-west-1:123456789012:function:health"
+        lambda_function_name = "health"
+      }
+    }
+  }
+
+  assert {
+    condition     = length(aws_apigatewayv2_stage.this.route_settings) == 1
+    error_message = "Only the route that configures throttling should produce a route_settings entry."
+  }
+
+  assert {
+    condition     = one(aws_apigatewayv2_stage.this.route_settings).route_key == "POST /auth/signup"
+    error_message = "The route_settings entry must be keyed to the throttled route."
+  }
+
+  assert {
+    condition     = one(aws_apigatewayv2_stage.this.route_settings).throttling_burst_limit == 10
+    error_message = "throttling_burst_limit must be applied to the route_settings entry."
+  }
+
+  assert {
+    condition     = one(aws_apigatewayv2_stage.this.route_settings).throttling_rate_limit == 5
+    error_message = "throttling_rate_limit must be applied to the route_settings entry."
+  }
+}
+
 run "access_log_group_name_sanitizes_stage_name" {
   command = plan
 

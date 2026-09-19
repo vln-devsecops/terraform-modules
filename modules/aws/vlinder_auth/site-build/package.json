@@ -1,0 +1,9 @@
+{
+  "name": "@vln-devsecops/vlinder-auth-site-build",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build manifest for the vlinder_auth module's auth-site SPA. Terraform installs this at apply time via null_resource.auth_site_package; Dependabot bumps the version here when a new release is published to GitHub Packages.",
+  "dependencies": {
+    "@vln-devsecops/auth-site": "^1.0.0"
+  }
+}

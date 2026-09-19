@@ -187,7 +187,8 @@
         "secretsmanager:PutSecretValue",
         "secretsmanager:TagResource",
         "secretsmanager:UntagResource",
-        "secretsmanager:UpdateSecret"
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:GetRandomPassword"
       ],
       "Resource": "*"
     },
