@@ -1598,8 +1598,16 @@ resource "aws_iam_policy" "auth_api" {
       {
         Effect = "Allow"
         Action = [
-          # Login (server-side password verification).
+          # Login only (server-side password verification via
+          # ADMIN_USER_PASSWORD_AUTH) -- not shared with, and not sufficient
+          # for, the refresh flow below, which AWS requires to go through
+          # GetTokensFromRefreshToken instead.
           "cognito-idp:AdminInitiateAuth",
+          # Refresh, on the rotation-enabled auth_site client. AWS rejects
+          # AdminInitiateAuth's REFRESH_TOKEN_AUTH flow outright once an app
+          # client has refresh-token rotation enabled; GetTokensFromRefreshToken
+          # is its replacement.
+          "cognito-idp:GetTokensFromRefreshToken",
           # Registration + password reset, wrapped server-side so the SPA
           # speaks only /api/v1/auth. Cognito's own code-generating/consuming
           # operations (ConfirmSignUp, ResendConfirmationCode, ForgotPassword,
