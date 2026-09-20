@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   checkov:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || 'littlemonarch' }}
     env:
       CHECKOV_VERSION: "3.2.525"
       CHECKOV_SKIP_CHECKS: "CKV_AWS_70"
@@ -65,7 +65,7 @@ jobs:
 
   discover:
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: littlemonarch
     outputs:
       suites: ${{ steps.discover.outputs.suites }}
       suite_count: ${{ steps.discover.outputs.suite_count }}
@@ -107,7 +107,7 @@ jobs:
 
   credential_gate:
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: littlemonarch
     needs: discover
     environment: vln-devsecops
     outputs:
@@ -129,7 +129,7 @@ jobs:
 
   integration:
     if: github.event_name != 'pull_request' && needs.discover.outputs.suite_count != '0' && needs.credential_gate.outputs.credentials_available == 'true'
-    runs-on: ubuntu-latest
+    runs-on: littlemonarch
     needs:
       - discover
       - credential_gate
@@ -246,7 +246,7 @@ jobs:
 
   integration_skipped:
     if: github.event_name != 'pull_request' && needs.discover.outputs.suite_count != '0' && needs.credential_gate.outputs.credentials_available != 'true'
-    runs-on: ubuntu-latest
+    runs-on: littlemonarch
     needs:
       - discover
       - credential_gate
