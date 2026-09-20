@@ -1270,7 +1270,7 @@ resource "null_resource" "auth_refresh_token_key_seed" {
 # The admin API's double-submit CSRF defence (see doc/admin-api-csrf.md) --
 # an HMAC-SHA256 key shared between auth_api (which mints the vln_auth_csrf
 # cookie as HMAC(session-id, this secret) in node-vlinder-auth) and
-# templates/admin_api_rewrite.js (which only ever compares that cookie's
+# templates/src/admin_api_rewrite.js (which only ever compares that cookie's
 # value to the X-Vln-Csrf-Token header, never touching this secret at all).
 # Unlike the three secrets above, there's no fixed-byte-count requirement to
 # satisfy: an HMAC-SHA256 key works at any length, so --password-length 64
@@ -2139,7 +2139,11 @@ resource "aws_cloudfront_function" "spa_viewer_request" {
   runtime = "cloudfront-js-2.0"
   publish = true
   comment = "SPA route rewriting for ${local.auth_site_domain}"
-  code    = file("${path.module}/templates/spa_viewer_request.js")
+  # Reads the transpiled output, not the hand-edited source: see
+  # templates/src/spa_viewer_request.js and edge-functions-build/ for why
+  # (cloudfront-js-2.0 is a curated JS subset; templates/dist/ is what's
+  # actually deployed, generated from templates/src/ via esbuild).
+  code = file("${path.module}/templates/dist/spa_viewer_request.js")
 }
 
 # We host our own login UI rather than a hosted one precisely to control the
@@ -2217,7 +2221,11 @@ resource "aws_cloudfront_function" "admin_api_rewrite" {
   runtime = "cloudfront-js-2.0"
   publish = true
   comment = "Cookie-to-bearer lift and X-Origin-Verify strip for the admin HTTP API on ${local.auth_site_domain}"
-  code    = file("${path.module}/templates/admin_api_rewrite.js")
+  # Reads the transpiled output, not the hand-edited source: see
+  # templates/src/admin_api_rewrite.js and edge-functions-build/ for why
+  # (cloudfront-js-2.0 is a curated JS subset; templates/dist/ is what's
+  # actually deployed, generated from templates/src/ via esbuild).
+  code = file("${path.module}/templates/dist/admin_api_rewrite.js")
 }
 
 # No auth_api_rewrite: the /api/v1/auth* routes are public and passed through

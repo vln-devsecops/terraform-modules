@@ -191,6 +191,11 @@ Two same-origin API behaviors on the same distribution, ordered so
   direct `execute-api` access that would bypass CloudFront (and any WAF
   attached via `waf_web_acl_arn`). Only present in the `"full"` profile.
 
+Both CloudFront Functions above are written as normal modern JS in
+`templates/src/` and transpiled to the `cloudfront-js-2.0`-compatible
+`templates/dist/` (what Terraform actually deploys) by `edge-functions-build/`
+— see `doc/cloudfront-js-runtime-compatibility.md`.
+
 The SPA's *built* static assets are delivered by Terraform, so a single
 `terraform apply` yields a working site — there is no separate deploy step.
 The prebuilt bundle is published to GitHub Packages as

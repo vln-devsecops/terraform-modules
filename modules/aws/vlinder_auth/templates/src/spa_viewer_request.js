@@ -2,6 +2,12 @@
 // Routes /admin and /admin/* to /admin/index.html (the admin entry point),
 // and everything else to /index.html (the login entry point). Paths with
 // file extensions pass through unchanged so static assets are served as-is.
+//
+// This is SOURCE, not what Terraform deploys: see the header comment in
+// admin_api_rewrite.js in this same directory for the templates/src ->
+// templates/dist build pipeline. This file never needed modernizing (no
+// syntax cloudfront-js-2.0 rejects), so its plain ES5-ish `var` style is
+// left alone rather than churned for its own sake.
 function handler(event) {
   var request = event.request;
   var uri = request.uri;

@@ -4,6 +4,19 @@
 // alongside without touching this function. The /api/v1/auth* behavior is
 // matched first (higher precedence), so auth requests never reach here.
 //
+// This is SOURCE, not what Terraform deploys: the `code` attribute on
+// aws_cloudfront_function.admin_api_rewrite reads
+// templates/dist/admin_api_rewrite.js, generated from this file by
+// ../../edge-functions-build/ (esbuild targeting es2019). Write normal
+// modern JS here -- optional chaining (`?.`) included -- and run
+// `npm run build` in edge-functions-build/ to regenerate dist/. Do not
+// hand-edit dist/: CI diffs it against a fresh build and fails if it's
+// stale or hand-modified. See doc/cloudfront-js-runtime-compatibility.md
+// for why this exists: cloudfront-js-2.0 is a curated ES5.1-ish subset that
+// rejects `?.`/`??` with a parse-time SyntaxError, which CloudFront turns
+// into a silent, everywhere 503 (no origin request, no log) rather than a
+// deploy-time error.
+//
 // The admin API's JWT authorizer reads the Authorization header, but the SPA
 // holds its session as an HttpOnly cookie (JS can't set the header). Lift the
 // cookie into a Bearer Authorization header at the edge so the authorizer works

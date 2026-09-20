@@ -216,6 +216,45 @@ jobs:
 
           echo "README.md lists all ${#module_dirs[@]} discovered modules."
 
+  edge-functions-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install edge-functions-build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          npm ci --prefix modules/aws/vlinder_auth/edge-functions-build
+
+      - name: Rebuild CloudFront Function templates and check for drift
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          npm run build --prefix modules/aws/vlinder_auth/edge-functions-build
+
+          if ! git diff --exit-code -- modules/aws/vlinder_auth/templates/dist; then
+            echo "modules/aws/vlinder_auth/templates/dist is stale or was hand-edited." >&2
+            echo "Regenerate it via 'npm run build' in modules/aws/vlinder_auth/edge-functions-build/ after editing templates/src/, and commit the result." >&2
+            exit 1
+          fi
+
+          {
+            echo "## CloudFront Function template build"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| \`templates/dist/\` matches a fresh build of \`templates/src/\` | pass |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   modules:
     runs-on: ubuntu-latest
     steps:
