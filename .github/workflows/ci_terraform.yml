@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   fmt:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || 'littlemonarch' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -43,7 +43,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
   tflint:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || 'littlemonarch' }}
     env:
       TFLINT_VERSION: "0.63.1"
     steps:
@@ -91,7 +91,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
   trivy:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || 'littlemonarch' }}
     env:
       TRIVY_VERSION: "0.70.0"
     steps:
@@ -125,7 +125,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || 'littlemonarch' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -217,7 +217,7 @@ jobs:
           echo "README.md lists all ${#module_dirs[@]} discovered modules."
 
   modules:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || 'littlemonarch' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -269,7 +269,7 @@ jobs:
           cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
 
   examples:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || 'littlemonarch' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
