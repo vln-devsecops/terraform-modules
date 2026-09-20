@@ -4,6 +4,16 @@
 // alongside without touching this function. The /api/v1/auth* behavior is
 // matched first (higher precedence), so auth requests never reach here.
 //
+// No optional-chaining operator anywhere in this file, despite runtime =
+// "cloudfront-js-2.0" below: confirmed via `aws cloudfront test-function`
+// against the actual deployed function that this runtime's parser rejects
+// that operator with a SyntaxError, and CloudFront then serves a generic
+// 503 HTML error page for every single request through this behavior,
+// never reaching the origin at all -- exactly the silent,
+// 100%-reproducible admin-panel failure this file's plain `a && a.b` style
+// (instead of that operator) is now guarding against. See this module's
+// own admin_api_rewrite_avoids_syntax_cloudfront_js_2_0_rejects test.
+//
 // The admin API's JWT authorizer reads the Authorization header, but the SPA
 // holds its session as an HttpOnly cookie (JS can't set the header). Lift the
 // cookie into a Bearer Authorization header at the edge so the authorizer works
@@ -57,8 +67,8 @@ function handler(event) {
   // rejected anyway.
   const method = request.method;
   if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
-    const csrfCookie = cookies['vln_auth_csrf']?.value;
-    const csrfHeader = request.headers['x-vln-csrf-token']?.value;
+    const csrfCookie = cookies['vln_auth_csrf'] && cookies['vln_auth_csrf'].value;
+    const csrfHeader = request.headers['x-vln-csrf-token'] && request.headers['x-vln-csrf-token'].value;
 
     if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
       return {
@@ -75,7 +85,7 @@ function handler(event) {
     }
   }
 
-  if (cookies['vln_auth_session']?.value) {
+  if (cookies['vln_auth_session'] && cookies['vln_auth_session'].value) {
     request.headers['authorization'] = { value: 'Bearer ' + cookies['vln_auth_session'].value };
   }
 

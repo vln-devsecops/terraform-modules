@@ -308,3 +308,30 @@ run "admin_api_rewrite_enforces_double_submit_csrf" {
     error_message = "admin_api_rewrite.js should reject a failed CSRF check with a 403 response."
   }
 }
+
+run "admin_api_rewrite_avoids_syntax_cloudfront_js_2_0_rejects" {
+  command = plan
+
+  # Real regression, not a hypothetical: admin_api_rewrite.js shipped with
+  # `?.` (optional chaining) for months, and `aws cloudfront test-function`
+  # against the actually-deployed function proved cloudfront-js-2.0's parser
+  # rejects it outright (SyntaxError). CloudFront then serves its own generic
+  # 503 HTML page for *every* request through the /api/v1/* behavior, before
+  # the request ever reaches the origin -- no Lambda invocation, no
+  # CloudWatch log, nothing but a silent, 100%-reproducible admin-panel
+  # failure. terraform test's mock provider can't execute this function's JS
+  # runtime (see the comment above
+  # admin_api_rewrite_enforces_double_submit_csrf), so this can only ever be
+  # a static guard against the specific syntax already known to be
+  # unsupported -- not a substitute for occasionally re-running
+  # `aws cloudfront test-function` against the real deployed function.
+  assert {
+    condition     = !can(regex("\\?\\.", aws_cloudfront_function.admin_api_rewrite[0].code))
+    error_message = "admin_api_rewrite.js must not use optional chaining (?.) -- cloudfront-js-2.0 rejects it with a SyntaxError. Use `a && a.b` instead."
+  }
+
+  assert {
+    condition     = !can(regex("\\?\\?", aws_cloudfront_function.admin_api_rewrite[0].code))
+    error_message = "admin_api_rewrite.js must not use the nullish-coalescing operator (??) -- unconfirmed whether cloudfront-js-2.0 supports it, and not worth risking the same failure mode as ?. for a convenience operator."
+  }
+}
