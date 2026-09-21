@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.3](https://github.com/vln-devsecops/terraform-modules/compare/v1.2.2...v1.2.3) (2026-09-21)
+
+
+### Bug Fixes
+
+* **static_site_edge_function:** unwrap test-function's request/response envelope ([#323](https://github.com/vln-devsecops/terraform-modules/issues/323)) ([1bb07a0](https://github.com/vln-devsecops/terraform-modules/commit/1bb07a0d6f8c833922875ff9d57de666e91bc146))
+
 ## [1.2.2](https://github.com/vln-devsecops/terraform-modules/compare/v1.2.1...v1.2.2) (2026-09-16)
 
 
