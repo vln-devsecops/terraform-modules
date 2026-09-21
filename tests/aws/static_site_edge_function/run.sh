@@ -179,12 +179,23 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-assert output.get("statusCode") == 401, (
+# aws cloudfront test-function wraps whichever kind of object the function
+# actually returned: {"request": {...}} for a passthrough/modified request,
+# {"response": {...}} for a short-circuit response (e.g. this 401). It is
+# NOT the flat object itself -- confirmed empirically against a live
+# throwaway function, since this is undocumented enough to have been wrong
+# here on the first attempt.
+assert "response" in output, (
+    "expected a missing Authorization header to short-circuit with a response "
+    f"object (statusCode 401), but got: {output!r}"
+)
+payload = output["response"]
+assert payload.get("statusCode") == 401, (
     f"expected a missing Authorization header to be rejected with statusCode 401, "
-    f"got {output.get('statusCode')!r}"
+    f"got {payload.get('statusCode')!r}"
 )
 
-challenge = output["headers"]["www-authenticate"]["value"]
+challenge = payload["headers"]["www-authenticate"]["value"]
 assert "Smoke Test" in challenge, (
     f"expected the www-authenticate challenge to contain the configured realm "
     f"'Smoke Test', got {challenge!r}"
@@ -211,12 +222,13 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-assert "statusCode" not in output, (
+assert "request" in output, (
     "expected a correct Authorization header to pass the basic-auth check and "
-    f"return the modified request (no statusCode), but got: {output!r}"
+    f"return the modified request, but got: {output!r}"
 )
-assert output.get("uri") == "/docs/index.html", (
-    f"expected /docs/ to rewrite to /docs/index.html, got {output.get('uri')!r}"
+payload = output["request"]
+assert payload.get("uri") == "/docs/index.html", (
+    f"expected /docs/ to rewrite to /docs/index.html, got {payload.get('uri')!r}"
 )
 PY
 
@@ -240,11 +252,12 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-assert "statusCode" not in output, (
+assert "request" in output, (
     f"expected a correct Authorization header to pass through as a request, got: {output!r}"
 )
-assert output.get("uri") == "/about/index.html", (
-    f"expected extensionless /about to rewrite to /about/index.html, got {output.get('uri')!r}"
+payload = output["request"]
+assert payload.get("uri") == "/about/index.html", (
+    f"expected extensionless /about to rewrite to /about/index.html, got {payload.get('uri')!r}"
 )
 PY
 
@@ -268,12 +281,13 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-assert "statusCode" not in output, (
+assert "request" in output, (
     f"expected a correct Authorization header to pass through as a request, got: {output!r}"
 )
-assert output.get("uri") == "/healthz", (
+payload = output["request"]
+assert payload.get("uri") == "/healthz", (
     "expected /healthz, which is in pretty_url_exceptions, to pass through "
-    f"unchanged despite being extensionless, got {output.get('uri')!r}"
+    f"unchanged despite being extensionless, got {payload.get('uri')!r}"
 )
 PY
 
@@ -333,12 +347,13 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-assert "statusCode" not in output, (
+assert "request" in output, (
     "expected basic auth to be genuinely off (no Authorization header enforced), "
-    f"but got a rejection object: {output!r}"
+    f"but got a rejection response object: {output!r}"
 )
-assert output.get("uri") == "/dashboard/data", (
-    f"expected the request uri to pass through unchanged, got {output.get('uri')!r}"
+payload = output["request"]
+assert payload.get("uri") == "/dashboard/data", (
+    f"expected the request uri to pass through unchanged, got {payload.get('uri')!r}"
 )
 PY
 
@@ -362,9 +377,14 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-assert output.get("uri") == "/about", (
+assert "request" in output, (
+    f"expected pretty-url rewriting to be genuinely off and pass through as a "
+    f"request, but got: {output!r}"
+)
+payload = output["request"]
+assert payload.get("uri") == "/about", (
     "expected pretty-url rewriting to be genuinely off, leaving an extensionless "
-    f"uri unchanged, got {output.get('uri')!r}"
+    f"uri unchanged, got {payload.get('uri')!r}"
 )
 PY
 
