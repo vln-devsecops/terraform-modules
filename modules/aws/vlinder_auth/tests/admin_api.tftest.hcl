@@ -308,3 +308,41 @@ run "admin_api_rewrite_enforces_double_submit_csrf" {
     error_message = "admin_api_rewrite.js should reject a failed CSRF check with a 403 response."
   }
 }
+
+run "admin_api_rewrite_avoids_syntax_cloudfront_js_2_0_rejects" {
+  command = plan
+
+  # Real regression, not a hypothetical: admin_api_rewrite.js once shipped
+  # with `?.` (optional chaining), and `aws cloudfront test-function` against
+  # the actually-deployed function proved cloudfront-js-2.0's parser rejects
+  # it outright (SyntaxError). CloudFront then serves its own generic 503
+  # HTML page for *every* request through the /api/v1/* behavior, before the
+  # request ever reaches the origin -- no Lambda invocation, no CloudWatch
+  # log, nothing but a silent, 100%-reproducible admin-panel failure.
+  #
+  # The guarantee this asserts on no longer comes from a developer manually
+  # avoiding the syntax in source: templates/src/admin_api_rewrite.js is free
+  # to use `?.`/`??` (and does), because `code` above reads
+  # templates/dist/admin_api_rewrite.js, generated from src/ by
+  # edge-functions-build/ (esbuild targeting es2019, which downlevels both
+  # operators into cloudfront-js-2.0-compatible code) -- see
+  # doc/cloudfront-js-runtime-compatibility.md. This assertion is kept as a
+  # second, independent layer of defense-in-depth: it protects against
+  # someone bypassing the build system altogether, e.g. hand-editing dist/
+  # directly, which the ci_terraform.yml `git diff --exit-code` freshness
+  # check also catches independently. terraform test's mock provider can't
+  # execute this function's JS runtime (see the comment above
+  # admin_api_rewrite_enforces_double_submit_csrf), so this can only ever be
+  # a static guard against syntax already known to be unsupported -- not a
+  # substitute for occasionally re-running `aws cloudfront test-function`
+  # against the real deployed function.
+  assert {
+    condition     = !can(regex("\\?\\.", aws_cloudfront_function.admin_api_rewrite[0].code))
+    error_message = "admin_api_rewrite.js's compiled output must not contain optional chaining (?.) -- cloudfront-js-2.0 rejects it with a SyntaxError. If templates/src changed, rebuild via `npm run build` in edge-functions-build/; if dist/ was hand-edited, regenerate it instead."
+  }
+
+  assert {
+    condition     = !can(regex("\\?\\?", aws_cloudfront_function.admin_api_rewrite[0].code))
+    error_message = "admin_api_rewrite.js's compiled output must not contain the nullish-coalescing operator (??) -- unconfirmed whether cloudfront-js-2.0 supports it, and not worth risking the same failure mode as ?. for a convenience operator."
+  }
+}

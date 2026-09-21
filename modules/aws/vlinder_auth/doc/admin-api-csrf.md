@@ -2,7 +2,7 @@
 
 ## Why this exists
 
-`templates/admin_api_rewrite.js` (the CloudFront viewer-request function on
+`templates/src/admin_api_rewrite.js` (the CloudFront viewer-request function on
 the `/api/v1/*` behavior) lifts the `vln_auth_session` `HttpOnly` cookie into
 a `Bearer` `Authorization` header before forwarding to the admin API's HTTP
 API Gateway. The admin API's JWT authorizer only reads the header — the SPA
@@ -85,8 +85,10 @@ Two things are **kept**, not replaced, now that double-submit is in place:
 
 Implemented, as step 8a of `node-vlinder-auth`'s `doc/plan.md`.
 
-- **This repo (terraform-modules)**: `templates/admin_api_rewrite.js` performs
-  the double-submit check described above, and
+- **This repo (terraform-modules)**: `templates/src/admin_api_rewrite.js`
+  (transpiled to `templates/dist/admin_api_rewrite.js` — see
+  `doc/cloudfront-js-runtime-compatibility.md` — which is what Terraform
+  actually deploys) performs the double-submit check described above, and
   `aws_secretsmanager_secret.admin_api_csrf_secret` in `main.tf` provisions
   the shared HMAC key, wired to `auth_api` via the `ADMIN_API_CSRF_SECRET_ID`
   environment variable. `admin_api_never_exposes_a_post_route` is kept

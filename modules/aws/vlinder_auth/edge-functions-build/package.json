@@ -1,0 +1,12 @@
+{
+  "name": "@vln-devsecops/vlinder-auth-edge-functions-build",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Transpiles the vlinder_auth module's CloudFront Function sources (templates/src/*.js, normal modern JS) down to templates/dist/*.js, the ES2019-ish subset that the cloudfront-js-2.0 runtime actually accepts (no optional chaining, no nullish coalescing). Run `npm run build` after editing anything in ../templates/src/; CI re-runs it and diffs the result against committed dist/ to catch stale or hand-edited output. See ../doc/cloudfront-js-runtime-compatibility.md.",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
