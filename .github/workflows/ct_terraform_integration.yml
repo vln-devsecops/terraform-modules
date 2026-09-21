@@ -149,7 +149,7 @@ jobs:
       # auth-lambda package it publishes.
       - name: Checkout node-vlinder-auth (auth-site SPA + e2e suite, vlinder_auth suite only)
         if: contains(matrix.suite, 'vlinder_auth')
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: vln-devsecops/node-vlinder-auth
           path: node-vlinder-auth
