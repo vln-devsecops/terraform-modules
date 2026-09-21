@@ -135,7 +135,15 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-auth_header = output["headers"]["authorization"]["value"]
+# aws cloudfront test-function wraps whichever kind of object the function
+# actually returned: {"request": {...}} for a passthrough/modified request,
+# {"response": {...}} for a short-circuit response. It is NOT the flat
+# object itself -- confirmed empirically against a live throwaway function.
+assert "request" in output, (
+    f"expected a session cookie to pass through as a bearer-lifted request, got: {output!r}"
+)
+payload = output["request"]
+auth_header = payload["headers"]["authorization"]["value"]
 expected = "Bearer smoke-test-session-token"
 assert auth_header == expected, (
     f"expected bearer-lifted Authorization header {expected!r}, got {auth_header!r}"
@@ -163,7 +171,12 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-status_code = output.get("statusCode")
+assert "response" in output, (
+    "expected the double-submit CSRF check to reject with a response object "
+    f"(statusCode 403), but got: {output!r}"
+)
+payload = output["response"]
+status_code = payload.get("statusCode")
 assert status_code == 403, (
     f"expected the double-submit CSRF check to reject with statusCode 403, got {status_code!r}"
 )
@@ -190,12 +203,13 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-assert "statusCode" not in output, (
+assert "request" in output, (
     "expected a matching double-submit CSRF cookie/header to pass through as the "
-    f"modified request (no statusCode), but got a rejection object: {output!r}"
+    f"modified request, but got a rejection response object: {output!r}"
 )
-assert output.get("uri") == "/api/v1/roles/123", (
-    f"expected the pass-through request's uri to be unchanged, got {output.get('uri')!r}"
+payload = output["request"]
+assert payload.get("uri") == "/api/v1/roles/123", (
+    f"expected the pass-through request's uri to be unchanged, got {payload.get('uri')!r}"
 )
 PY
 
@@ -272,8 +286,10 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-assert output.get("uri") == "/admin/index.html", (
-    f"expected /admin to rewrite to /admin/index.html, got {output.get('uri')!r}"
+assert "request" in output, f"expected a passthrough request, got: {output!r}"
+payload = output["request"]
+assert payload.get("uri") == "/admin/index.html", (
+    f"expected /admin to rewrite to /admin/index.html, got {payload.get('uri')!r}"
 )
 PY
 
@@ -297,8 +313,10 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-assert output.get("uri") == "/index.html", (
-    f"expected / to rewrite to /index.html, got {output.get('uri')!r}"
+assert "request" in output, f"expected a passthrough request, got: {output!r}"
+payload = output["request"]
+assert payload.get("uri") == "/index.html", (
+    f"expected / to rewrite to /index.html, got {payload.get('uri')!r}"
 )
 PY
 
@@ -322,8 +340,10 @@ assert not error_message, (
 )
 
 output = json.loads(result["FunctionOutput"])
-assert output.get("uri") == "/assets/app.js", (
-    f"expected a static asset uri to pass through unchanged, got {output.get('uri')!r}"
+assert "request" in output, f"expected a passthrough request, got: {output!r}"
+payload = output["request"]
+assert payload.get("uri") == "/assets/app.js", (
+    f"expected a static asset uri to pass through unchanged, got {payload.get('uri')!r}"
 )
 PY
 
