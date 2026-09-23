@@ -98,7 +98,19 @@ resource "aws_apigatewayv2_stage" "this" {
   dynamic "route_settings" {
     for_each = { for k, v in var.routes : k => v if v.throttling_burst_limit != null || v.throttling_rate_limit != null }
     content {
-      route_key              = route_settings.value.route_key
+      # route_key deliberately reads off aws_apigatewayv2_route.this (the
+      # actual resource), not route_settings.value.route_key (the same
+      # string, but sourced from var.routes, the module's *input*).
+      # Terraform's dependency graph is built from resource references, not
+      # from "happens to be the same value" -- reading the input directly
+      # here created no implicit dependency on aws_apigatewayv2_route.this,
+      # so Terraform was free to create this stage (whose route_settings
+      # names a route by key) before the route itself existed. Confirmed
+      # live: CreateStage failed with "Unable to find Route by key POST
+      # /api/v1/auth/password within the provided RouteSettings" on a real
+      # apply, non-deterministically, since it depends on which resource AWS
+      # happens to finish creating first.
+      route_key              = aws_apigatewayv2_route.this[route_settings.key].route_key
       throttling_burst_limit = route_settings.value.throttling_burst_limit
       throttling_rate_limit  = route_settings.value.throttling_rate_limit
     }
