@@ -73,6 +73,16 @@ module "vlinder_auth" {
 
   domain_prefix = local.domain_prefix
 
+  # Required whenever the default ("full") profile provisions the public
+  # auth API -- see ses.tf. source_arn references the *verification*
+  # resource, not the identity directly, so apply waits for real SES
+  # verification before the module can use it.
+  ses_configuration = {
+    configuration_set_name = aws_sesv2_configuration_set.test.configuration_set_name
+    source_arn             = aws_ses_domain_identity_verification.test.arn
+    from_email_address     = "noreply@${local.ses_domain}"
+  }
+
   # This suite's own e2e run (see run.sh) uploads a real SPA build via
   # deploy.sh, well beyond the single placeholder object Terraform itself
   # tracks -- without this, terraform destroy fails with BucketNotEmpty on
