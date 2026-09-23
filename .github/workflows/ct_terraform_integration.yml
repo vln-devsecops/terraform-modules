@@ -143,16 +143,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # node-vlinder-auth is a separate repo (the auth-site SPA source and
-      # the BDD e2e suite live there, not here) -- public as of 2026-07-13,
-      # so no cross-repo PAT is needed to check it out or to read the
-      # auth-lambda package it publishes.
+      # node-vlinder-auth is private (confirmed via the API -- the "public
+      # as of 2026-07-13" claim this comment used to make is false). The
+      # default GITHUB_TOKEN above is scoped only to this repo
+      # (terraform-modules), so it can't read node-vlinder-auth at all --
+      # confirmed live, this used to fail with a 404 "Not Found" masking
+      # "no access", identically regardless of actions/checkout's version
+      # or an explicit ref, since neither addresses the actual permission
+      # gap. Mint a short-lived, read-only, node-vlinder-auth-scoped token
+      # instead, from the same GitHub App infra's cd_refresh_vlinder_auth_demo.yml
+      # already uses for exactly this.
+      - name: Mint read-only token for node-vlinder-auth checkout
+        if: contains(matrix.suite, 'vlinder_auth')
+        id: node_vlinder_auth_token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.E2E_CHECKOUT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.E2E_CHECKOUT_APP_PRIVATE_KEY }}
+          # Required, not redundant: without it, the action looks up the
+          # installation for GITHUB_REPOSITORY (terraform-modules), which
+          # this App isn't installed on, and fails outright rather than
+          # minting some broader-but-working token. Naming node-vlinder-auth
+          # here is what makes the action find the right installation, and
+          # additionally narrows the resulting token's scope as genuine
+          # defense-in-depth, independent of whatever the App happens to be
+          # installed on elsewhere.
+          repositories: node-vlinder-auth
+
       - name: Checkout node-vlinder-auth (auth-site SPA + e2e suite, vlinder_auth suite only)
         if: contains(matrix.suite, 'vlinder_auth')
         uses: actions/checkout@v7
         with:
           repository: vln-devsecops/node-vlinder-auth
+          ref: main
           path: node-vlinder-auth
+          token: ${{ steps.node_vlinder_auth_token.outputs.token }}
+          # This job's later steps run node-vlinder-auth's own e2e suite
+          # against a live AWS deployment; the minted token is scoped
+          # read-only to node-vlinder-auth and expires shortly after this
+          # job finishes regardless, but there's no reason for it to remain
+          # readable on disk for the AWS-touching steps that follow.
+          persist-credentials: false
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
