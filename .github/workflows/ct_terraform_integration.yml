@@ -147,11 +147,22 @@ jobs:
       # the BDD e2e suite live there, not here) -- public as of 2026-07-13,
       # so no cross-repo PAT is needed to check it out or to read the
       # auth-lambda package it publishes.
+      #
+      # ref is required, not optional: without it, actions/checkout calls
+      # GitHub's REST API to auto-detect the target repo's default branch,
+      # authenticated with this job's own GITHUB_TOKEN -- which is scoped
+      # only to *this* repo (terraform-modules), so that call 404s against
+      # any other repo regardless of its own visibility or the checkout
+      # action's version (confirmed identical failure on both
+      # actions/checkout@v5 and @v7). Naming the branch explicitly skips
+      # that lookup entirely; the actual git fetch of a public repo needs no
+      # token at all.
       - name: Checkout node-vlinder-auth (auth-site SPA + e2e suite, vlinder_auth suite only)
         if: contains(matrix.suite, 'vlinder_auth')
         uses: actions/checkout@v7
         with:
           repository: vln-devsecops/node-vlinder-auth
+          ref: main
           path: node-vlinder-auth
 
       - name: Configure AWS credentials
