@@ -142,6 +142,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Nothing after this step runs git against terraform-modules
+          # itself -- node-vlinder-auth's own checkout below manages its own
+          # token instead. No reason for this repo's GITHUB_TOKEN to remain
+          # readable on disk for the AWS-touching steps that follow.
+          persist-credentials: false
 
       # node-vlinder-auth is private (confirmed via the API -- the "public
       # as of 2026-07-13" claim this comment used to make is false). The
@@ -156,7 +162,12 @@ jobs:
       - name: Mint read-only token for node-vlinder-auth checkout
         if: contains(matrix.suite, 'vlinder_auth')
         id: node_vlinder_auth_token
-        uses: actions/create-github-app-token@v3
+        # SHA-pinned, not tag-pinned like the checkouts around it: this is
+        # the one step handling a long-lived App private key rather than a
+        # short-lived, auto-revoked token, so a compromised mutable v3 tag
+        # would be a silent, standing compromise instead of a one-run blip.
+        # Pin corresponds to the v3 tag as of 2026-09-23.
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           client-id: ${{ vars.E2E_CHECKOUT_APP_CLIENT_ID }}
           private-key: ${{ secrets.E2E_CHECKOUT_APP_PRIVATE_KEY }}

@@ -94,7 +94,19 @@ resolve_node_vlinder_auth_dir() {
 node_vlinder_auth_dir="$(resolve_node_vlinder_auth_dir || true)"
 
 if [ -z "${node_vlinder_auth_dir}" ]; then
-  printf '%s\n' "node-vlinder-auth checkout not found (tried CI-nested and sibling-workspace layouts); skipping e2e suite (the SPA itself is deployed by terraform apply)." >&2
+  message="node-vlinder-auth checkout not found (tried CI-nested and sibling-workspace layouts)."
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    # In CI, the checkout above is expected to succeed unconditionally --
+    # a missing directory here means the workflow's own checkout step
+    # silently stopped matching this script's path-probe (e.g. a future
+    # `if:`/path change on one side but not the other), not a legitimately
+    # absent local checkout. Fail loudly rather than let this script exit 0
+    # having skipped the entire e2e suite -- that already happened once
+    # (see the workflow's own history of Checkout node-vlinder-auth fixes).
+    printf '%s %s\n' "${message}" "This is unexpected in CI -- failing rather than silently skipping the e2e suite." >&2
+    exit 1
+  fi
+  printf '%s %s\n' "${message}" "Skipping e2e suite (the SPA itself is deployed by terraform apply)." >&2
 else
   role_assignments_table_name="$(terraform -chdir="${script_dir}" output -raw role_assignments_table_name)"
   auth_url="$(terraform -chdir="${script_dir}" output -raw auth_url)"
