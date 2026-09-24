@@ -1022,6 +1022,16 @@ resource "aws_lambda_function" "admin_api" {
 locals {
   admin_api_issuer_url = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${aws_cognito_user_pool.this.id}"
 
+  # Identifies the admin API as a *resource*, not a Cognito-assigned artifact:
+  # deliberately not aws_cognito_user_pool_client.auth_site.id (see
+  # node-vlinder-auth#142) -- that ID is an implementation detail of this
+  # particular user pool, not a stable name for "the admin API" a client can
+  # meaningfully request as an aud. The admin-site SPA requests this same
+  # value (via config.json's adminApiAudience field, below) when it signs in,
+  # and auth-api's pre-token-generation trigger sets it as the resulting
+  # access token's aud claim.
+  admin_api_audience = "${var.app_name}-${var.deployment_environment}-admin-api"
+
   # Guarded on create_admin_panel as a whole, not just its consumer: Terraform
   # evaluates a local's expression whenever anything in the configuration
   # references it, regardless of whether that reference sits inside a
@@ -1075,7 +1085,7 @@ module "admin_api_authorizer" {
   require_jwt = true
 
   jwt_issuer_url     = local.admin_api_issuer_url
-  jwt_audience       = one(aws_cognito_user_pool_client.auth_site[*].id)
+  jwt_audience       = local.admin_api_audience
   jwt_forward_claims = ["tenants", "scope"]
 
   # create_kms_policy must be explicit (true), not left to infer from
@@ -2001,6 +2011,11 @@ locals {
     userPoolClientId = one(aws_cognito_user_pool_client.auth_site[*].id)
     multiTenant      = var.tenancy_mode == "multi"
     adminEnabled     = local.create_admin_panel
+    # Only meaningful (and only ever read by the SPA) when the admin panel
+    # exists at all -- matches adminEnabled's own conditionality. The SPA
+    # sends this back as the audience it wants on its own session's access
+    # token; see local.admin_api_audience above and node-vlinder-auth#142.
+    adminApiAudience = local.create_admin_panel ? local.admin_api_audience : null
   })
 
   # issuer/jwks_uri name Cognito's own endpoints directly -- never mirrored,

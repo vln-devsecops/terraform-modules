@@ -85,6 +85,11 @@ run "require_jwt_sets_jwt_env_vars" {
     condition     = one(aws_lambda_function.this.environment).variables["JWT_FORWARD_CLAIMS"] == "tenantId,permissions"
     error_message = "JWT_FORWARD_CLAIMS must be a comma-joined list of jwt_forward_claims."
   }
+
+  assert {
+    condition     = output.jwt_audience == "client-id-123"
+    error_message = "jwt_audience output must match jwt_audience, for callers' own contract tests to assert against."
+  }
 }
 
 run "outputs_expose_authorizer_wiring" {
