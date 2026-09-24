@@ -164,6 +164,11 @@ run "config_json_carries_the_client_id_and_single_tenant_flag" {
     condition     = jsondecode(local_file.auth_site_config[0].content).adminEnabled == true
     error_message = "config.json adminEnabled should be true when auth_profile is \"full\"."
   }
+
+  assert {
+    condition     = jsondecode(local_file.auth_site_config[0].content).adminApiAudience == local.admin_api_audience
+    error_message = "config.json adminApiAudience should be local.admin_api_audience, the same value the admin API authorizer expects -- not a Cognito-assigned client ID."
+  }
 }
 
 run "config_json_multi_tenant_flag_follows_tenancy_mode" {
@@ -197,6 +202,11 @@ run "spa_is_still_deployed_with_admin_disabled_in_its_config_for_the_auth_api_pr
   assert {
     condition     = jsondecode(local_file.auth_site_config[0].content).adminEnabled == false
     error_message = "config.json adminEnabled should be false in the auth_api profile, so the SPA can degrade gracefully at /admin."
+  }
+
+  assert {
+    condition     = jsondecode(local_file.auth_site_config[0].content).adminApiAudience == null
+    error_message = "config.json adminApiAudience should be null when there's no admin API for this deployment to request one for."
   }
 }
 

@@ -159,6 +159,15 @@ run "admin_api_is_provisioned_via_the_shared_http_api_module_with_a_lambda_autho
     condition     = toset(module.admin_api_authorizer[0].jwt_forward_claims) == toset(["tenants", "scope"])
     error_message = "The admin API authorizer must forward exactly the \"tenants\" and \"scope\" claims -- lambda-src's extractCallerContext reads no others."
   }
+
+  # Must be a resource identifier this module itself defines, not
+  # aws_cognito_user_pool_client.auth_site's ID -- that's a Cognito-assigned
+  # artifact of this particular user pool, not a stable name a client can
+  # meaningfully request as an aud (see node-vlinder-auth#142).
+  assert {
+    condition     = module.admin_api_authorizer[0].jwt_audience == local.admin_api_audience
+    error_message = "The admin API authorizer's expected audience must be local.admin_api_audience, not a Cognito-assigned client ID."
+  }
 }
 
 run "admin_api_is_omitted_for_the_auth_api_profile" {

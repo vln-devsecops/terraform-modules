@@ -13,6 +13,11 @@ output "jwt_forward_claims" {
   value       = var.require_jwt ? var.jwt_forward_claims : null
 }
 
+output "jwt_audience" {
+  description = "The configured expected audience, for callers' own contract tests to assert against."
+  value       = var.require_jwt ? var.jwt_audience : null
+}
+
 output "origin_verify_secret" {
   description = "The generated shared secret. Wire this into your CDN's origin config as a custom request header named X-Origin-Verify (e.g. CloudFront's origin custom_header) -- the authorizer checks that exact header name, it is not caller-configurable."
   value       = random_password.origin_verify_secret.result
