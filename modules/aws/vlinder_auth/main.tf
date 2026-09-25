@@ -168,11 +168,6 @@ resource "aws_cognito_user_pool" "this" {
   lambda_config {
     pre_sign_up       = aws_lambda_function.pre_sign_up.arn
     post_confirmation = aws_lambda_function.post_confirmation.arn
-    # Only set when the admin panel exists (the only caller requesting an
-    # audience today) -- one(...) resolves to null on an empty list, which
-    # Cognito treats as "no trigger configured", same idiom used throughout
-    # this file for every other admin-panel-conditional reference.
-    pre_authentication = one(aws_lambda_function.pre_authentication[*].arn)
     pre_token_generation_config {
       lambda_arn     = aws_lambda_function.pre_token_generation.arn
       lambda_version = "V2_0"
@@ -725,105 +720,6 @@ resource "aws_lambda_permission" "pre_sign_up" {
   statement_id  = "AllowCognitoInvokePreSignUp"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.pre_sign_up.function_name
-  principal     = "cognito-idp.amazonaws.com"
-  source_arn    = aws_cognito_user_pool.this.arn
-}
-
-# Exists solely to bridge a client-requested audience into Pre Token
-# Generation, which needs it but can't read it directly -- see
-# module.pending_audience's comment and node-vlinder-auth#142. Only
-# provisioned when the admin panel exists, since it's the only caller
-# requesting an audience today.
-resource "aws_iam_role" "pre_authentication" {
-  count = local.create_admin_panel ? 1 : 0
-
-  name               = "${var.app_name}-${var.deployment_environment}-pre-authentication"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
-  tags               = local.common_tags
-}
-
-resource "aws_iam_role_policy_attachment" "pre_authentication_logging" {
-  count = local.create_admin_panel ? 1 : 0
-
-  role       = aws_iam_role.pre_authentication[0].name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-resource "aws_iam_policy" "pre_authentication" {
-  count = local.create_admin_panel ? 1 : 0
-
-  name = "${var.app_name}-${var.deployment_environment}-pre-authentication"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:PutItem"]
-        Resource = [one(module.pending_audience[*].table_arn)]
-      },
-      # DynamoDB requires the *caller* to hold KMS permissions on the
-      # table's key, not just the table-arn grant above -- see the matching
-      # statement on aws_iam_policy.pre_token_generation for the full
-      # rationale. GenerateDataKey is included even though this Lambda only
-      # ever writes: DynamoDB's table-level data-key caching can trigger it
-      # regardless of the operation.
-      {
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
-        Resource = [aws_kms_key.this.arn, one(module.pending_audience[*].kms_key_arn)]
-      },
-    ]
-  })
-
-  tags = local.common_tags
-}
-
-resource "aws_iam_role_policy_attachment" "pre_authentication_permissions" {
-  count = local.create_admin_panel ? 1 : 0
-
-  role       = aws_iam_role.pre_authentication[0].name
-  policy_arn = aws_iam_policy.pre_authentication[0].arn
-}
-
-resource "aws_lambda_function" "pre_authentication" {
-  count = local.create_admin_panel ? 1 : 0
-
-  # checkov:skip=CKV_AWS_115:Concurrent execution limit is caller-configurable, not enforced at module level
-  # checkov:skip=CKV_AWS_116:DLQ integration is caller-configurable, not wired at module level
-  # checkov:skip=CKV_AWS_117:VPC attachment is caller-configurable, not enforced at module level
-  # checkov:skip=CKV_AWS_272:Code signing is caller-configurable, not enforced at module level
-  function_name    = "${var.app_name}-${var.deployment_environment}-pre-authentication"
-  role             = aws_iam_role.pre_authentication[0].arn
-  handler          = "pre-authentication/handler.handler"
-  runtime          = "nodejs22.x"
-  timeout          = 5
-  publish          = true
-  kms_key_arn      = aws_kms_key.this.arn
-  filename         = data.archive_file.lambda_package.output_path
-  source_code_hash = data.archive_file.lambda_package.output_base64sha256
-
-  tracing_config {
-    mode = "Active"
-  }
-
-  environment {
-    variables = {
-      PENDING_AUDIENCE_TABLE_NAME = one(module.pending_audience[*].table_name)
-    }
-  }
-
-  tags = local.common_tags
-
-  depends_on = [aws_iam_role_policy_attachment.pre_authentication_logging]
-}
-
-resource "aws_lambda_permission" "pre_authentication" {
-  count = local.create_admin_panel ? 1 : 0
-
-  statement_id  = "AllowCognitoInvokePreAuthentication"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.pre_authentication[0].function_name
   principal     = "cognito-idp.amazonaws.com"
   source_arn    = aws_cognito_user_pool.this.arn
 }
@@ -1711,16 +1607,25 @@ module "verification_codes" {
   range_key = "purpose"
 }
 
-# Bridges a client-requested audience from Cognito's Pre Authentication
-# trigger (which receives AdminInitiateAuth's ClientMetadata) to Pre Token
-# Generation (which doesn't -- confirmed live, see node-vlinder-auth#142),
-# so the latter can set the access token's aud claim. Only the admin panel
-# requests an audience today, hence gated on create_admin_panel rather than
-# create_public_auth_api. Short-TTL (60s -- see pre-authentication/handler.ts)
-# and reproducible, same reasoning as verification_codes above. purpose is a
-# fixed "aud" value today (see shared/pendingAudience.ts) -- kept as its own
-# attribute, not folded into userId, so a second kind of per-user pending
-# hand-off value could reuse this table later without a schema change.
+# Bridges a client-requested audience from auth-api's own /password handler
+# to Pre Token Generation, which needs it to set the access token's aud
+# claim but has no way to read it directly. Written by auth-api itself, not
+# via any Cognito trigger: confirmed live that Cognito never forwards
+# AdminInitiateAuth's ClientMetadata to any Lambda trigger for
+# ADMIN_USER_PASSWORD_AUTH (an earlier Pre Authentication trigger built on
+# that documented-but-not-actually-true behavior didn't work -- see
+# node-vlinder-auth#142). Only the admin panel requests an audience today,
+# hence gated on create_admin_panel rather than create_public_auth_api.
+# Short-TTL (60s -- see shared/pendingAudience.ts) and reproducible, same
+# reasoning as verification_codes above.
+#
+# Keyed by identifier (the user's lowercased email), not a Cognito sub: the
+# user pool has username_attributes = ["email"], so auth-api only ever has
+# the email before authentication succeeds, never the sub -- Pre Token
+# Generation reads back via event.request.userAttributes.email. purpose is a
+# fixed "aud" value today -- kept as its own attribute, not folded into
+# identifier, so a second kind of per-user pending hand-off value could reuse
+# this table later without a schema change.
 module "pending_audience" {
   count  = local.create_admin_panel ? 1 : 0
   source = "../dynamodb"
@@ -1733,10 +1638,10 @@ module "pending_audience" {
   ttl_attribute               = "expiresAt"
 
   attributes = [
-    { name = "userId", type = "S" },
+    { name = "identifier", type = "S" },
     { name = "purpose", type = "S" },
   ]
-  hash_key  = "userId"
+  hash_key  = "identifier"
   range_key = "purpose"
 }
 
@@ -1762,7 +1667,7 @@ resource "aws_iam_policy" "auth_api" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Effect = "Allow"
         Action = [
@@ -1866,7 +1771,26 @@ resource "aws_iam_policy" "auth_api" {
         Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
         Resource = [aws_kms_key.this.arn, one(module.verification_codes[*].kms_key_arn), module.user_role_assignments.kms_key_arn]
       },
-    ]
+      ],
+      # This whole statement pair only makes sense when module.pending_audience
+      # exists at all -- a direct reference to its table_arn would put a
+      # literal null into the policy JSON (an invalid Resource) once
+      # count = 0, so guard on create_admin_panel instead of relying on
+      # one(...)'s null here. Matches the identical guard on
+      # aws_iam_policy.pre_token_generation's Get/Delete counterpart.
+      local.create_admin_panel ? [
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:PutItem"]
+          Resource = [one(module.pending_audience[*].table_arn)]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+          Resource = [one(module.pending_audience[*].kms_key_arn)]
+        },
+      ] : []
+    )
   })
 
   tags = local.common_tags
@@ -1901,23 +1825,31 @@ resource "aws_lambda_function" "auth_api" {
   }
 
   environment {
-    variables = {
-      USER_POOL_ID                   = aws_cognito_user_pool.this.id
-      AUTH_CLIENT_ID                 = one(aws_cognito_user_pool_client.auth_site[*].id)
-      TENANTS_TABLE_NAME             = aws_dynamodb_table.tenants.name
-      AUTH_APP_TENANT_ID             = "auth"
-      SESSION_SIGNING_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
-      ONE_TIME_TOKEN_KEY_SECRET_ID   = one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)
-      REFRESH_TOKEN_KEY_SECRET_ID    = one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn)
-      ADMIN_API_CSRF_SECRET_ID       = one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn)
-      REFRESH_TOKEN_TTL_SECONDS      = "2592000"
-      VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
-      VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
-      VERIFICATION_CODE_MAX_ATTEMPTS = tostring(var.verification_code_max_attempts)
-      SES_FROM_ADDRESS               = try(var.ses_configuration.from_email_address, "")
-      ROLE_ASSIGNMENTS_TABLE_NAME    = module.user_role_assignments.table_name
-      ROLES_TABLE_NAME               = aws_dynamodb_table.roles.name
-    }
+    variables = merge(
+      {
+        USER_POOL_ID                   = aws_cognito_user_pool.this.id
+        AUTH_CLIENT_ID                 = one(aws_cognito_user_pool_client.auth_site[*].id)
+        TENANTS_TABLE_NAME             = aws_dynamodb_table.tenants.name
+        AUTH_APP_TENANT_ID             = "auth"
+        SESSION_SIGNING_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
+        ONE_TIME_TOKEN_KEY_SECRET_ID   = one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)
+        REFRESH_TOKEN_KEY_SECRET_ID    = one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn)
+        ADMIN_API_CSRF_SECRET_ID       = one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn)
+        REFRESH_TOKEN_TTL_SECONDS      = "2592000"
+        VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
+        VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
+        VERIFICATION_CODE_MAX_ATTEMPTS = tostring(var.verification_code_max_attempts)
+        SES_FROM_ADDRESS               = try(var.ses_configuration.from_email_address, "")
+        ROLE_ASSIGNMENTS_TABLE_NAME    = module.user_role_assignments.table_name
+        ROLES_TABLE_NAME               = aws_dynamodb_table.roles.name
+      },
+      # Absent entirely (not set to an empty string) when there's no admin
+      # panel -- auth-api's handler.ts treats a missing
+      # PENDING_AUDIENCE_TABLE_NAME as "no audience feature in this
+      # deployment", same posture as pre_token_generation's own copy of this
+      # same variable.
+      local.create_admin_panel ? { PENDING_AUDIENCE_TABLE_NAME = one(module.pending_audience[*].table_name) } : {}
+    )
   }
 
   tags = local.common_tags
