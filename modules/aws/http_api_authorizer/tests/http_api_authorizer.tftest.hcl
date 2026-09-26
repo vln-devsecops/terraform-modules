@@ -92,6 +92,33 @@ run "require_jwt_sets_jwt_env_vars" {
   }
 }
 
+run "jwt_resource_is_set_independently_of_jwt_audience" {
+  command = plan
+
+  variables {
+    name               = "myapp-prod-admin-api"
+    require_jwt        = true
+    jwt_issuer_url     = "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_example"
+    jwt_resource       = "admin-api"
+    jwt_forward_claims = ["tenantId", "permissions"]
+  }
+
+  assert {
+    condition     = one(aws_lambda_function.this.environment).variables["JWT_RESOURCE"] == "admin-api"
+    error_message = "JWT_RESOURCE must match jwt_resource."
+  }
+
+  assert {
+    condition     = !contains(keys(one(aws_lambda_function.this.environment).variables), "JWT_AUDIENCE")
+    error_message = "JWT_AUDIENCE should be entirely absent when jwt_audience is not set, not an empty/null value."
+  }
+
+  assert {
+    condition     = output.jwt_resource == "admin-api"
+    error_message = "jwt_resource output must match jwt_resource, for callers' own contract tests to assert against."
+  }
+}
+
 run "outputs_expose_authorizer_wiring" {
   command = plan
 

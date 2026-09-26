@@ -123,9 +123,15 @@ resource "aws_lambda_function" "this" {
       var.require_jwt ? {
         REQUIRE_JWT        = "true"
         JWT_ISSUER_URL     = var.jwt_issuer_url
-        JWT_AUDIENCE       = var.jwt_audience
         JWT_FORWARD_CLAIMS = join(",", var.jwt_forward_claims)
-      } : {}
+      } : {},
+      # JWT_AUDIENCE/JWT_RESOURCE are each independently optional on the
+      # Lambda side (see node-http-api-authorizer's jwt-verify.ts) -- included
+      # only when actually set, not as an empty/null string, so an unset
+      # value is indistinguishable from "this deployment never configured
+      # this check" rather than "check against an empty string".
+      var.require_jwt && var.jwt_audience != null ? { JWT_AUDIENCE = var.jwt_audience } : {},
+      var.require_jwt && var.jwt_resource != null ? { JWT_RESOURCE = var.jwt_resource } : {}
     )
   }
 

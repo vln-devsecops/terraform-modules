@@ -4,7 +4,7 @@ variable "name" {
 }
 
 variable "require_jwt" {
-  description = "Whether the authorizer also verifies a bearer JWT in addition to the origin-verify header. When true, jwt_issuer_url and jwt_audience are required."
+  description = "Whether the authorizer also verifies a bearer JWT in addition to the origin-verify header. When true, jwt_issuer_url is required; at least one of jwt_audience/jwt_resource is expected too, or the authorizer only checks signature/issuer/expiry."
   type        = bool
   default     = false
 }
@@ -16,7 +16,13 @@ variable "jwt_issuer_url" {
 }
 
 variable "jwt_audience" {
-  description = "Expected JWT audience (aud claim). Required when require_jwt is true."
+  description = "Expected JWT audience (aud claim), checked when set. Of limited use against a Cognito-issued access token, which only ever accepts an aud value equal to its own app client ID -- jwt_resource is the claim for distinguishing which downstream API a token is meant for."
+  type        = string
+  default     = null
+}
+
+variable "jwt_resource" {
+  description = "Expected value of a custom `resource` claim, checked when set -- independent of jwt_audience, for distinguishing which downstream API a token is meant for when aud can't (e.g. against a Cognito-issued access token, which only ever accepts an aud value equal to its own app client ID)."
   type        = string
   default     = null
 }

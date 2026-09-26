@@ -893,10 +893,18 @@ resource "aws_lambda_function" "pre_token_generation" {
   }
 
   environment {
-    variables = {
-      ROLE_ASSIGNMENTS_TABLE_NAME = module.user_role_assignments.table_name
-      ROLES_TABLE_NAME            = aws_dynamodb_table.roles.name
-    }
+    variables = merge(
+      {
+        ROLE_ASSIGNMENTS_TABLE_NAME = module.user_role_assignments.table_name
+        ROLES_TABLE_NAME            = aws_dynamodb_table.roles.name
+      },
+      # Absent entirely (not set to an empty string) when there's no admin
+      # panel -- the handler treats a missing ADMIN_API_RESOURCE as "no
+      # resource claim to set", same posture as HOOK_MODULE_PATH being
+      # optional. See local.admin_api_resource's doc comment for why this
+      # (not aud) is what the admin API authorizer actually checks.
+      local.create_admin_panel ? { ADMIN_API_RESOURCE = local.admin_api_resource } : {}
+    )
   }
 
   tags = local.common_tags
@@ -1034,6 +1042,17 @@ locals {
   # DynamoDB-backed client-requested-audience table) before landing here.
   admin_api_audience = one(aws_cognito_user_pool_client.auth_site[*].id)
 
+  # aud (above) is pinned to the app client ID, so it can only ever prove a
+  # token came from this Cognito client at all -- it can't distinguish which
+  # downstream API the token is meant for (every client this system
+  # authenticates shares that one client ID). A custom `resource` claim
+  # covers that instead -- not one of Cognito's restricted claim names, so
+  # it's never silently dropped the way a non-client-ID aud would be. Set on
+  # the access token unconditionally by pre-token-generation (via
+  # ADMIN_API_RESOURCE, below) whenever the admin panel exists, and checked
+  # independently of aud by the admin API authorizer's jwt_resource.
+  admin_api_resource = "${var.app_name}-${var.deployment_environment}-admin-api"
+
   # Guarded on create_admin_panel as a whole, not just its consumer: Terraform
   # evaluates a local's expression whenever anything in the configuration
   # references it, regardless of whether that reference sits inside a
@@ -1088,6 +1107,7 @@ module "admin_api_authorizer" {
 
   jwt_issuer_url     = local.admin_api_issuer_url
   jwt_audience       = local.admin_api_audience
+  jwt_resource       = local.admin_api_resource
   jwt_forward_claims = ["tenants", "scope"]
 
   # create_kms_policy must be explicit (true), not left to infer from
