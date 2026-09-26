@@ -160,13 +160,33 @@ run "admin_api_is_provisioned_via_the_shared_http_api_module_with_a_lambda_autho
     error_message = "The admin API authorizer must forward exactly the \"tenants\" and \"scope\" claims -- lambda-src's extractCallerContext reads no others."
   }
 
-  # Must be a resource identifier this module itself defines, not
-  # aws_cognito_user_pool_client.auth_site's ID -- that's a Cognito-assigned
-  # artifact of this particular user pool, not a stable name a client can
-  # meaningfully request as an aud (see node-vlinder-auth#142).
+  # Must be the auth-site Cognito app client's own ID: AWS's Pre Token
+  # Generation docs (confirmed live, node-vlinder-auth#142) state Cognito
+  # only accepts an `aud` claim on an access token when its value equals the
+  # app client ID of the current session -- any other value is silently
+  # dropped, so a synthetic resource-identifier string (tried first) can
+  # never actually land on the issued token.
   assert {
     condition     = module.admin_api_authorizer[0].jwt_audience == local.admin_api_audience
-    error_message = "The admin API authorizer's expected audience must be local.admin_api_audience, not a Cognito-assigned client ID."
+    error_message = "The admin API authorizer's expected audience must be local.admin_api_audience."
+  }
+
+  assert {
+    condition     = local.admin_api_audience == one(aws_cognito_user_pool_client.auth_site[*].id)
+    error_message = "local.admin_api_audience must equal the auth-site Cognito app client's ID -- the only value Cognito will actually set as an access token's aud claim."
+  }
+
+  # aud alone can't tell the authorizer which downstream API a token is for
+  # (every client shares the one app client ID) -- jwt_resource, checked
+  # independently, is what actually does that job.
+  assert {
+    condition     = module.admin_api_authorizer[0].jwt_resource == local.admin_api_resource
+    error_message = "The admin API authorizer's expected resource claim must be local.admin_api_resource."
+  }
+
+  assert {
+    condition     = one(aws_lambda_function.pre_token_generation.environment).variables["ADMIN_API_RESOURCE"] == local.admin_api_resource
+    error_message = "pre_token_generation should be wired to set ADMIN_API_RESOURCE to local.admin_api_resource when the admin panel exists."
   }
 }
 
@@ -185,6 +205,11 @@ run "admin_api_is_omitted_for_the_auth_api_profile" {
   assert {
     condition     = length(aws_lambda_function.admin_api) == 0
     error_message = "The admin-api Lambda itself should not be provisioned in the auth_api profile."
+  }
+
+  assert {
+    condition     = !contains(keys(one(aws_lambda_function.pre_token_generation.environment).variables), "ADMIN_API_RESOURCE")
+    error_message = "ADMIN_API_RESOURCE should be entirely absent, not set to an empty/null value, when there's no admin panel."
   }
 }
 

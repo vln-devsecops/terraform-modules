@@ -265,34 +265,6 @@ run "pre_token_generation_env_vars_match_the_vendored_lambda_contract" {
     )
     error_message = "pre_token_generation environment variables should match lambda-src's expected config keys."
   }
-
-  assert {
-    condition     = one(aws_lambda_function.pre_token_generation.environment).variables["PENDING_AUDIENCE_TABLE_NAME"] == one(module.pending_audience[*].table_name)
-    error_message = "pre_token_generation should be wired to module.pending_audience's table when the admin panel exists (the default \"full\" profile)."
-  }
-}
-
-run "pending_audience_is_omitted_for_the_auth_api_profile" {
-  command = plan
-
-  variables {
-    auth_profile = "auth_api"
-  }
-
-  assert {
-    condition     = length(module.pending_audience) == 0
-    error_message = "pending_audience should not be provisioned when there's no admin panel to request an audience."
-  }
-
-  assert {
-    condition     = !contains(keys(one(aws_lambda_function.pre_token_generation.environment).variables), "PENDING_AUDIENCE_TABLE_NAME")
-    error_message = "PENDING_AUDIENCE_TABLE_NAME should be entirely absent, not set to an empty/null value, when there's no admin panel."
-  }
-
-  assert {
-    condition     = !contains(keys(one(aws_lambda_function.auth_api[0].environment).variables), "PENDING_AUDIENCE_TABLE_NAME")
-    error_message = "auth_api's PENDING_AUDIENCE_TABLE_NAME should also be entirely absent when there's no admin panel."
-  }
 }
 
 run "lambda_config_wires_both_triggers_onto_the_user_pool" {
@@ -306,32 +278,6 @@ run "lambda_config_wires_both_triggers_onto_the_user_pool" {
   assert {
     condition     = one(one(aws_cognito_user_pool.this.lambda_config).pre_token_generation_config).lambda_arn == aws_lambda_function.pre_token_generation.arn
     error_message = "pre_token_generation should be wired into the user pool's lambda_config."
-  }
-}
-
-run "auth_api_role_can_write_the_pending_audience_table" {
-  command = plan
-
-  assert {
-    condition = anytrue([
-      for statement in jsondecode(aws_iam_policy.auth_api[0].policy).Statement :
-      contains(statement.Action, "dynamodb:PutItem") && contains(statement.Resource, one(module.pending_audience[*].table_arn))
-    ])
-    error_message = "auth_api should be able to PutItem on the pending_audience table -- it writes the pending audience directly, no Cognito trigger involved."
-  }
-}
-
-run "pre_token_generation_can_read_and_delete_the_pending_audience_table" {
-  command = plan
-
-  assert {
-    condition = anytrue([
-      for statement in jsondecode(aws_iam_policy.pre_token_generation.policy).Statement :
-      contains(statement.Action, "dynamodb:GetItem") &&
-      contains(statement.Action, "dynamodb:DeleteItem") &&
-      contains(statement.Resource, one(module.pending_audience[*].table_arn))
-    ])
-    error_message = "pre_token_generation should be able to GetItem/DeleteItem on the pending_audience table (single-use consumption)."
   }
 }
 

@@ -838,7 +838,7 @@ resource "aws_iam_policy" "pre_token_generation" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = concat([
+    Statement = [
       {
         Effect   = "Allow"
         Action   = ["dynamodb:Query"]
@@ -862,25 +862,7 @@ resource "aws_iam_policy" "pre_token_generation" {
         Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
         Resource = [aws_kms_key.this.arn, module.user_role_assignments.kms_key_arn]
       },
-      ],
-      # This whole statement pair only makes sense when module.pending_audience
-      # exists at all -- a direct reference to its table_arn would put a
-      # literal null into the policy JSON (an invalid Resource) once
-      # count = 0, so guard on create_admin_panel instead of relying on
-      # one(...)'s null here.
-      local.create_admin_panel ? [
-        {
-          Effect   = "Allow"
-          Action   = ["dynamodb:GetItem", "dynamodb:DeleteItem"]
-          Resource = [one(module.pending_audience[*].table_arn)]
-        },
-        {
-          Effect   = "Allow"
-          Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
-          Resource = [one(module.pending_audience[*].kms_key_arn)]
-        },
-      ] : []
-    )
+    ]
   })
 
   tags = local.common_tags
@@ -917,10 +899,11 @@ resource "aws_lambda_function" "pre_token_generation" {
         ROLES_TABLE_NAME            = aws_dynamodb_table.roles.name
       },
       # Absent entirely (not set to an empty string) when there's no admin
-      # panel -- the handler treats a missing PENDING_AUDIENCE_TABLE_NAME as
-      # "no audience feature in this deployment", same posture as
-      # HOOK_MODULE_PATH being optional.
-      local.create_admin_panel ? { PENDING_AUDIENCE_TABLE_NAME = one(module.pending_audience[*].table_name) } : {}
+      # panel -- the handler treats a missing ADMIN_API_RESOURCE as "no
+      # resource claim to set", same posture as HOOK_MODULE_PATH being
+      # optional. See local.admin_api_resource's doc comment for why this
+      # (not aud) is what the admin API authorizer actually checks.
+      local.create_admin_panel ? { ADMIN_API_RESOURCE = local.admin_api_resource } : {}
     )
   }
 
@@ -1047,15 +1030,28 @@ resource "aws_lambda_function" "admin_api" {
 locals {
   admin_api_issuer_url = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${aws_cognito_user_pool.this.id}"
 
-  # Identifies the admin API as a *resource*, not a Cognito-assigned artifact:
-  # deliberately not aws_cognito_user_pool_client.auth_site.id (see
-  # node-vlinder-auth#142) -- that ID is an implementation detail of this
-  # particular user pool, not a stable name for "the admin API" a client can
-  # meaningfully request as an aud. The admin-site SPA requests this same
-  # value (via config.json's adminApiAudience field, below) when it signs in,
-  # and auth-api's pre-token-generation trigger sets it as the resulting
-  # access token's aud claim.
-  admin_api_audience = "${var.app_name}-${var.deployment_environment}-admin-api"
+  # Deliberately the Cognito app client ID, not a synthetic deployment-scoped
+  # name -- confirmed against AWS's own Pre Token Generation docs
+  # (node-vlinder-auth#142) that Cognito only accepts an `aud` claim on an
+  # access token when its value equals the app client ID of the current
+  # session; any other value is silently dropped. This was tried first as a
+  # synthetic "${app_name}-${env}-admin-api" string (thinking the client ID
+  # was an implementation detail not worth coupling to), which is why it took
+  # three separate designs and live diagnostics to find -- see #142's history
+  # for the two dead ends (a Pre Authentication ClientMetadata bridge, then a
+  # DynamoDB-backed client-requested-audience table) before landing here.
+  admin_api_audience = one(aws_cognito_user_pool_client.auth_site[*].id)
+
+  # aud (above) is pinned to the app client ID, so it can only ever prove a
+  # token came from this Cognito client at all -- it can't distinguish which
+  # downstream API the token is meant for (every client this system
+  # authenticates shares that one client ID). A custom `resource` claim
+  # covers that instead -- not one of Cognito's restricted claim names, so
+  # it's never silently dropped the way a non-client-ID aud would be. Set on
+  # the access token unconditionally by pre-token-generation (via
+  # ADMIN_API_RESOURCE, below) whenever the admin panel exists, and checked
+  # independently of aud by the admin API authorizer's jwt_resource.
+  admin_api_resource = "${var.app_name}-${var.deployment_environment}-admin-api"
 
   # Guarded on create_admin_panel as a whole, not just its consumer: Terraform
   # evaluates a local's expression whenever anything in the configuration
@@ -1111,6 +1107,7 @@ module "admin_api_authorizer" {
 
   jwt_issuer_url     = local.admin_api_issuer_url
   jwt_audience       = local.admin_api_audience
+  jwt_resource       = local.admin_api_resource
   jwt_forward_claims = ["tenants", "scope"]
 
   # create_kms_policy must be explicit (true), not left to infer from
@@ -1607,44 +1604,6 @@ module "verification_codes" {
   range_key = "purpose"
 }
 
-# Bridges a client-requested audience from auth-api's own /password handler
-# to Pre Token Generation, which needs it to set the access token's aud
-# claim but has no way to read it directly. Written by auth-api itself, not
-# via any Cognito trigger: confirmed live that Cognito never forwards
-# AdminInitiateAuth's ClientMetadata to any Lambda trigger for
-# ADMIN_USER_PASSWORD_AUTH (an earlier Pre Authentication trigger built on
-# that documented-but-not-actually-true behavior didn't work -- see
-# node-vlinder-auth#142). Only the admin panel requests an audience today,
-# hence gated on create_admin_panel rather than create_public_auth_api.
-# Short-TTL (60s -- see shared/pendingAudience.ts) and reproducible, same
-# reasoning as verification_codes above.
-#
-# Keyed by identifier (the user's lowercased email), not a Cognito sub: the
-# user pool has username_attributes = ["email"], so auth-api only ever has
-# the email before authentication succeeds, never the sub -- Pre Token
-# Generation reads back via event.request.userAttributes.email. purpose is a
-# fixed "aud" value today -- kept as its own attribute, not folded into
-# identifier, so a second kind of per-user pending hand-off value could reuse
-# this table later without a schema change.
-module "pending_audience" {
-  count  = local.create_admin_panel ? 1 : 0
-  source = "../dynamodb"
-
-  app_name                    = var.app_name
-  deployment_environment      = var.deployment_environment
-  function                    = "auth-pending-audience"
-  short_deployment_region     = local.short_region
-  deletion_protection_enabled = false
-  ttl_attribute               = "expiresAt"
-
-  attributes = [
-    { name = "identifier", type = "S" },
-    { name = "purpose", type = "S" },
-  ]
-  hash_key  = "identifier"
-  range_key = "purpose"
-}
-
 resource "aws_iam_role" "auth_api" {
   count = local.create_public_auth_api ? 1 : 0
 
@@ -1667,7 +1626,7 @@ resource "aws_iam_policy" "auth_api" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = concat([
+    Statement = [
       {
         Effect = "Allow"
         Action = [
@@ -1771,26 +1730,7 @@ resource "aws_iam_policy" "auth_api" {
         Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
         Resource = [aws_kms_key.this.arn, one(module.verification_codes[*].kms_key_arn), module.user_role_assignments.kms_key_arn]
       },
-      ],
-      # This whole statement pair only makes sense when module.pending_audience
-      # exists at all -- a direct reference to its table_arn would put a
-      # literal null into the policy JSON (an invalid Resource) once
-      # count = 0, so guard on create_admin_panel instead of relying on
-      # one(...)'s null here. Matches the identical guard on
-      # aws_iam_policy.pre_token_generation's Get/Delete counterpart.
-      local.create_admin_panel ? [
-        {
-          Effect   = "Allow"
-          Action   = ["dynamodb:PutItem"]
-          Resource = [one(module.pending_audience[*].table_arn)]
-        },
-        {
-          Effect   = "Allow"
-          Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
-          Resource = [one(module.pending_audience[*].kms_key_arn)]
-        },
-      ] : []
-    )
+    ]
   })
 
   tags = local.common_tags
@@ -1825,31 +1765,23 @@ resource "aws_lambda_function" "auth_api" {
   }
 
   environment {
-    variables = merge(
-      {
-        USER_POOL_ID                   = aws_cognito_user_pool.this.id
-        AUTH_CLIENT_ID                 = one(aws_cognito_user_pool_client.auth_site[*].id)
-        TENANTS_TABLE_NAME             = aws_dynamodb_table.tenants.name
-        AUTH_APP_TENANT_ID             = "auth"
-        SESSION_SIGNING_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
-        ONE_TIME_TOKEN_KEY_SECRET_ID   = one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)
-        REFRESH_TOKEN_KEY_SECRET_ID    = one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn)
-        ADMIN_API_CSRF_SECRET_ID       = one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn)
-        REFRESH_TOKEN_TTL_SECONDS      = "2592000"
-        VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
-        VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
-        VERIFICATION_CODE_MAX_ATTEMPTS = tostring(var.verification_code_max_attempts)
-        SES_FROM_ADDRESS               = try(var.ses_configuration.from_email_address, "")
-        ROLE_ASSIGNMENTS_TABLE_NAME    = module.user_role_assignments.table_name
-        ROLES_TABLE_NAME               = aws_dynamodb_table.roles.name
-      },
-      # Absent entirely (not set to an empty string) when there's no admin
-      # panel -- auth-api's handler.ts treats a missing
-      # PENDING_AUDIENCE_TABLE_NAME as "no audience feature in this
-      # deployment", same posture as pre_token_generation's own copy of this
-      # same variable.
-      local.create_admin_panel ? { PENDING_AUDIENCE_TABLE_NAME = one(module.pending_audience[*].table_name) } : {}
-    )
+    variables = {
+      USER_POOL_ID                   = aws_cognito_user_pool.this.id
+      AUTH_CLIENT_ID                 = one(aws_cognito_user_pool_client.auth_site[*].id)
+      TENANTS_TABLE_NAME             = aws_dynamodb_table.tenants.name
+      AUTH_APP_TENANT_ID             = "auth"
+      SESSION_SIGNING_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
+      ONE_TIME_TOKEN_KEY_SECRET_ID   = one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)
+      REFRESH_TOKEN_KEY_SECRET_ID    = one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn)
+      ADMIN_API_CSRF_SECRET_ID       = one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn)
+      REFRESH_TOKEN_TTL_SECONDS      = "2592000"
+      VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
+      VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
+      VERIFICATION_CODE_MAX_ATTEMPTS = tostring(var.verification_code_max_attempts)
+      SES_FROM_ADDRESS               = try(var.ses_configuration.from_email_address, "")
+      ROLE_ASSIGNMENTS_TABLE_NAME    = module.user_role_assignments.table_name
+      ROLES_TABLE_NAME               = aws_dynamodb_table.roles.name
+    }
   }
 
   tags = local.common_tags
@@ -2101,11 +2033,6 @@ locals {
     userPoolClientId = one(aws_cognito_user_pool_client.auth_site[*].id)
     multiTenant      = var.tenancy_mode == "multi"
     adminEnabled     = local.create_admin_panel
-    # Only meaningful (and only ever read by the SPA) when the admin panel
-    # exists at all -- matches adminEnabled's own conditionality. The SPA
-    # sends this back as the audience it wants on its own session's access
-    # token; see local.admin_api_audience above and node-vlinder-auth#142.
-    adminApiAudience = local.create_admin_panel ? local.admin_api_audience : null
   })
 
   # issuer/jwks_uri name Cognito's own endpoints directly -- never mirrored,
