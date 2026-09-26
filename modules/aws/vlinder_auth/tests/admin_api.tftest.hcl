@@ -160,13 +160,20 @@ run "admin_api_is_provisioned_via_the_shared_http_api_module_with_a_lambda_autho
     error_message = "The admin API authorizer must forward exactly the \"tenants\" and \"scope\" claims -- lambda-src's extractCallerContext reads no others."
   }
 
-  # Must be a resource identifier this module itself defines, not
-  # aws_cognito_user_pool_client.auth_site's ID -- that's a Cognito-assigned
-  # artifact of this particular user pool, not a stable name a client can
-  # meaningfully request as an aud (see node-vlinder-auth#142).
+  # Must be the auth-site Cognito app client's own ID: AWS's Pre Token
+  # Generation docs (confirmed live, node-vlinder-auth#142) state Cognito
+  # only accepts an `aud` claim on an access token when its value equals the
+  # app client ID of the current session -- any other value is silently
+  # dropped, so a synthetic resource-identifier string (tried first) can
+  # never actually land on the issued token.
   assert {
     condition     = module.admin_api_authorizer[0].jwt_audience == local.admin_api_audience
-    error_message = "The admin API authorizer's expected audience must be local.admin_api_audience, not a Cognito-assigned client ID."
+    error_message = "The admin API authorizer's expected audience must be local.admin_api_audience."
+  }
+
+  assert {
+    condition     = local.admin_api_audience == one(aws_cognito_user_pool_client.auth_site[*].id)
+    error_message = "local.admin_api_audience must equal the auth-site Cognito app client's ID -- the only value Cognito will actually set as an access token's aud claim."
   }
 }
 
