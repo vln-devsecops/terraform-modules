@@ -109,6 +109,7 @@ if [ -z "${node_vlinder_auth_dir}" ]; then
   printf '%s %s\n' "${message}" "Skipping e2e suite (the SPA itself is deployed by terraform apply)." >&2
 else
   role_assignments_table_name="$(terraform -chdir="${script_dir}" output -raw role_assignments_table_name)"
+  verification_codes_table_name="$(terraform -chdir="${script_dir}" output -raw verification_codes_table_name)"
   auth_url="$(terraform -chdir="${script_dir}" output -raw auth_url)"
 
   # The module now builds and deploys the auth-site SPA itself during
@@ -138,6 +139,7 @@ else
     export E2E_BASE_URL="${auth_url}"
     export E2E_USER_POOL_ID="${user_pool_id}"
     export E2E_ROLE_ASSIGNMENTS_TABLE="${role_assignments_table_name}"
+    export E2E_VERIFICATION_CODES_TABLE="${verification_codes_table_name}"
     export AWS_REGION="${TF_VAR_aws_region}"
     npm run test:live
   ); then

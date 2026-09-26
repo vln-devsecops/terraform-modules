@@ -126,3 +126,7 @@ output "auth_site_client_id" {
 output "role_assignments_table_name" {
   value = module.vlinder_auth.role_assignments_table_name
 }
+
+output "verification_codes_table_name" {
+  value = module.vlinder_auth.verification_codes_table_name
+}
