@@ -57,10 +57,18 @@ resource "aws_cognito_user_pool" "this" {
 
   auto_verified_attributes = ["email"]
 
-  device_configuration {
-    challenge_required_on_new_device      = true
-    device_only_remembered_on_user_prompt = true
-  }
+  # Device tracking deliberately disabled for now (rlc's call, 2026-09-30),
+  # discovered live via node-vlinder-auth's first-ever real refresh-token
+  # exchange against this pool: per AWS's refresh-token docs, "When device
+  # remembering is active in your user pool, you must provide the device key
+  # in GetTokensFromRefreshToken requests" -- nothing in refresh.ts's
+  # mint/consume chain (password.ts -> the one-time-token payload -> token.ts
+  # -> the refresh-token JWE payload -> refresh.ts) captures or threads a
+  # DeviceKey, so every GetTokensFromRefreshToken call failed with
+  # NotAuthorizedException ("Invalid Refresh Token") once this block enabled
+  # the feature. Wiring DeviceKey through properly is real, security-relevant
+  # work, deferred to after logout lands (doc/plan.md step 10) rather than
+  # done piecemeal here -- see doc/plan.md's step 10 follow-up item.
 
   mfa_configuration = var.mfa_configuration
 
