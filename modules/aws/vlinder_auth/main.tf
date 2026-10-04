@@ -1774,15 +1774,24 @@ resource "aws_lambda_function" "auth_api" {
 
   environment {
     variables = {
-      USER_POOL_ID                   = aws_cognito_user_pool.this.id
-      AUTH_CLIENT_ID                 = one(aws_cognito_user_pool_client.auth_site[*].id)
-      TENANTS_TABLE_NAME             = aws_dynamodb_table.tenants.name
-      AUTH_APP_TENANT_ID             = "auth"
-      SESSION_SIGNING_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
-      ONE_TIME_TOKEN_KEY_SECRET_ID   = one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)
-      REFRESH_TOKEN_KEY_SECRET_ID    = one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn)
-      ADMIN_API_CSRF_SECRET_ID       = one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn)
-      REFRESH_TOKEN_TTL_SECONDS      = "2592000"
+      USER_POOL_ID                  = aws_cognito_user_pool.this.id
+      AUTH_CLIENT_ID                = one(aws_cognito_user_pool_client.auth_site[*].id)
+      TENANTS_TABLE_NAME            = aws_dynamodb_table.tenants.name
+      AUTH_APP_TENANT_ID            = "auth"
+      SESSION_SIGNING_KEY_SECRET_ID = one(aws_secretsmanager_secret.auth_session_signing_key[*].arn)
+      ONE_TIME_TOKEN_KEY_SECRET_ID  = one(aws_secretsmanager_secret.auth_one_time_token_key[*].arn)
+      REFRESH_TOKEN_KEY_SECRET_ID   = one(aws_secretsmanager_secret.auth_refresh_token_key[*].arn)
+      ADMIN_API_CSRF_SECRET_ID      = one(aws_secretsmanager_secret.admin_api_csrf_secret[*].arn)
+      REFRESH_TOKEN_TTL_SECONDS     = "2592000"
+      # How long a /sudo step-up grant stays live before it decays back out
+      # -- independent of REFRESH_TOKEN_TTL_SECONDS above, which governs the
+      # wrapping JWE itself, not any one elevated grant riding inside it
+      # (see node-vlinder-auth's auth-api/handler.ts). Deliberately set
+      # explicitly rather than relying on that file's own fallback default:
+      # this value is a real product decision (how long a step-up lasts),
+      # not something that should silently come from whatever the Lambda
+      # happens to default to.
+      ELEVATED_GRANT_TTL_SECONDS     = "900"
       VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
       VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
       VERIFICATION_CODE_MAX_ATTEMPTS = tostring(var.verification_code_max_attempts)
@@ -1909,6 +1918,14 @@ locals {
     }
     whoami = {
       route_key              = "GET /api/v1/auth/whoami"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
+    }
+    sudo = {
+      route_key              = "POST /api/v1/auth/sudo"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit

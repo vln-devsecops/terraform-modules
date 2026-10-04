@@ -136,7 +136,7 @@ run "auth_api_routes_are_throttled_with_the_default_limits" {
         "POST /api/v1/auth/identify", "POST /api/v1/auth/password", "POST /api/v1/auth/signup",
         "POST /api/v1/auth/confirm", "POST /api/v1/auth/resend", "POST /api/v1/auth/forgot", "POST /api/v1/auth/reset",
         "GET /api/v1/auth/authorize", "POST /api/v1/auth/token", "POST /api/v1/auth/refresh",
-        "GET /api/v1/auth/whoami",
+        "GET /api/v1/auth/whoami", "POST /api/v1/auth/sudo",
       ] :
       contains([for route in local.auth_api_routes : route.route_key], route_key)
     ])
@@ -149,8 +149,8 @@ run "auth_api_routes_are_throttled_with_the_default_limits" {
   # any real route_key -- contains() alone only checks the list names above
   # are present, not that the two sides have the same length.
   assert {
-    condition     = length(local.auth_api_routes) == 11
-    error_message = "local.auth_api_routes should have exactly 11 entries -- if this fails after adding a new auth-api route, add its route_key to the list above too."
+    condition     = length(local.auth_api_routes) == 12
+    error_message = "local.auth_api_routes should have exactly 12 entries -- if this fails after adding a new auth-api route, add its route_key to the list above too."
   }
 }
 
@@ -353,6 +353,11 @@ run "auth_api_role_and_env_can_use_the_refresh_token_key" {
   assert {
     condition     = one(aws_lambda_function.auth_api[0].environment).variables["REFRESH_TOKEN_TTL_SECONDS"] == "2592000"
     error_message = "auth_api's REFRESH_TOKEN_TTL_SECONDS should be 2,592,000 seconds (30 days), matching auth_site's refresh_token_validity."
+  }
+
+  assert {
+    condition     = one(aws_lambda_function.auth_api[0].environment).variables["ELEVATED_GRANT_TTL_SECONDS"] == "900"
+    error_message = "auth_api's ELEVATED_GRANT_TTL_SECONDS should be set explicitly (900 seconds), not left to lambda-src's own fallback default -- see POST /sudo in lambda-src's auth-api/handler.ts."
   }
 
   assert {
