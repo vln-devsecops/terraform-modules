@@ -239,6 +239,7 @@ run "admin_api_routes_cover_the_full_users_and_roles_surface" {
       for route_key in [
         "GET /api/v1/users", "GET /api/v1/users/{userId}", "PATCH /api/v1/users/{userId}/enabled",
         "GET /api/v1/roles", "PUT /api/v1/users/{userId}/roles/{roleId}", "DELETE /api/v1/users/{userId}/roles/{roleId}",
+        "PATCH /api/v1/users/{userId}/terminate-sessions",
       ] :
       contains([for route in local.admin_api_routes : route.route_key], route_key)
     ])

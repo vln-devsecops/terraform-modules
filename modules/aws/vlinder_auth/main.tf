@@ -1103,6 +1103,12 @@ locals {
       lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
       authorization_type   = "CUSTOM"
     }
+    terminate_sessions = {
+      route_key            = "PATCH /api/v1/users/{userId}/terminate-sessions"
+      lambda_function_arn  = one(aws_lambda_function.admin_api[*].arn)
+      lambda_function_name = one(aws_lambda_function.admin_api[*].function_name)
+      authorization_type   = "CUSTOM"
+    }
   } : {}
 }
 
@@ -1926,6 +1932,26 @@ locals {
     }
     sudo = {
       route_key              = "POST /api/v1/auth/sudo"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
+    }
+    logout = {
+      route_key              = "POST /api/v1/auth/logout"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
+    }
+    # Cookie-authenticated (reads AS_SESSION_COOKIE), not bearer-body-shaped
+    # like its siblings above -- but still CUSTOM/no-JWT-authorizer, same as
+    # every other route here: the Lambda itself verifies the session cookie
+    # and its double-submit CSRF token, not the API Gateway authorizer.
+    session = {
+      route_key              = "POST /api/v1/auth/session"
       lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
       lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
       throttling_burst_limit = var.auth_api_throttling.burst_limit
