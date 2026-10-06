@@ -975,6 +975,7 @@ resource "aws_iam_policy" "admin_api" {
           "cognito-idp:AdminGetUser",
           "cognito-idp:AdminDisableUser",
           "cognito-idp:AdminEnableUser",
+          "cognito-idp:AdminUserGlobalSignOut",
         ]
         Resource = [aws_cognito_user_pool.this.arn]
       },
