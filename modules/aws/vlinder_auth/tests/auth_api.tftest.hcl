@@ -137,7 +137,7 @@ run "auth_api_routes_are_throttled_with_the_default_limits" {
         "POST /api/v1/auth/confirm", "POST /api/v1/auth/resend", "POST /api/v1/auth/forgot", "POST /api/v1/auth/reset",
         "GET /api/v1/auth/authorize", "POST /api/v1/auth/token", "POST /api/v1/auth/refresh",
         "GET /api/v1/auth/whoami", "POST /api/v1/auth/sudo",
-        "POST /api/v1/auth/logout", "POST /api/v1/auth/session",
+        "POST /api/v1/auth/logout", "POST /api/v1/auth/session", "POST /api/v1/auth/session-refresh",
       ] :
       contains([for route in local.auth_api_routes : route.route_key], route_key)
     ])
@@ -150,8 +150,8 @@ run "auth_api_routes_are_throttled_with_the_default_limits" {
   # any real route_key -- contains() alone only checks the list names above
   # are present, not that the two sides have the same length.
   assert {
-    condition     = length(local.auth_api_routes) == 14
-    error_message = "local.auth_api_routes should have exactly 14 entries -- if this fails after adding a new auth-api route, add its route_key to the list above too."
+    condition     = length(local.auth_api_routes) == 15
+    error_message = "local.auth_api_routes should have exactly 15 entries -- if this fails after adding a new auth-api route, add its route_key to the list above too."
   }
 }
 

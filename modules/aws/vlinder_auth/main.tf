@@ -1959,6 +1959,20 @@ locals {
       throttling_rate_limit  = var.auth_api_throttling.rate_limit
       authorization_type     = "CUSTOM"
     }
+    # Cookie-authenticated (reads AS_REFRESH_COOKIE) like `session` above,
+    # not bearer-body-shaped like `refresh`/`sudo` -- the direct-login
+    # (admin panel) counterpart of /refresh, giving a cookie session a real
+    # lifetime past the access token's own expiry (node-vlinder-auth
+    # doc/plan.md step 10's follow-up: "give direct-login cookie sessions a
+    # real refresh lifecycle").
+    session_refresh = {
+      route_key              = "POST /api/v1/auth/session-refresh"
+      lambda_function_arn    = one(aws_lambda_function.auth_api[*].arn)
+      lambda_function_name   = one(aws_lambda_function.auth_api[*].function_name)
+      throttling_burst_limit = var.auth_api_throttling.burst_limit
+      throttling_rate_limit  = var.auth_api_throttling.rate_limit
+      authorization_type     = "CUSTOM"
+    }
   } : {}
 }
 
