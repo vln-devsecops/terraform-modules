@@ -304,6 +304,11 @@ run "admin_api_role_can_manage_users_and_read_roles" {
   }
 
   assert {
+    condition     = strcontains(aws_iam_policy.admin_api[0].policy, "cognito-idp:AdminUserGlobalSignOut")
+    error_message = "admin_api's role should be able to terminate a user's sessions."
+  }
+
+  assert {
     condition     = strcontains(aws_iam_policy.admin_api[0].policy, "dynamodb:Scan")
     error_message = "admin_api's role should be able to scan the role-assignments/roles tables for cross-tenant listing."
   }
