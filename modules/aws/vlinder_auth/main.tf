@@ -57,20 +57,22 @@ resource "aws_cognito_user_pool" "this" {
 
   auto_verified_attributes = ["email"]
 
-  # Re-enabled 2026-10-07 (doc/plan.md step 10a, Phase 1 spike): disabled
-  # 2026-09-30 (rlc's call) after node-vlinder-auth's first-ever real
-  # refresh-token exchange against this pool discovered live that nothing in
-  # the mint/consume chain captured or threaded a Cognito DeviceKey, so every
-  # GetTokensFromRefreshToken call failed with NotAuthorizedException once
-  # this block was enabled. node-vlinder-auth PR #208 (auth-lambda@1.0.88)
-  # now confirms a device (via ConfirmDevice, no SRP verifier) and threads
-  # its DeviceKey through every rotation -- re-enabling this is the live test
-  # of whether that's sufficient; if GetTokensFromRefreshToken still fails
-  # the same way, this must be disabled again rather than guessed at further.
-  device_configuration {
-    challenge_required_on_new_device      = true
-    device_only_remembered_on_user_prompt = true
-  }
+  # Disabled again 2026-10-07 (doc/plan.md step 10a, Phase 1 spike result):
+  # re-enabled briefly to test whether confirming a device via
+  # ConfirmDevice(AccessToken, DeviceKey) with NO SRP verifier (this Lambda
+  # has no browser client to generate one) would satisfy
+  # GetTokensFromRefreshToken's "confirmed device key" requirement, after
+  # node-vlinder-auth PR #208 (auth-lambda@1.0.88) threaded the DeviceKey
+  # through. It did not: live, every scenario that actually calls
+  # GetTokensFromRefreshToken (bff-refresh, rp-handoff-refresh,
+  # session-refresh, sudo) failed with the same 401/NotAuthorizedException as
+  # the original 2026-09-30 incident. Confirmed-but-unverified devices are
+  # not sufficient; the real SRP password-verifier flow AWS's own
+  # device-tracking docs describe is the likely actual requirement, which is
+  # a materially bigger lift (hand-rolled SRP crypto server-side, since
+  # there's no browser SRP library here) -- out of scope for this round, left
+  # as a separately-scoped follow-up. Disabled rather than left half-working.
+  # See doc/plan.md step 10a for the full writeup.
 
   mfa_configuration = var.mfa_configuration
 
