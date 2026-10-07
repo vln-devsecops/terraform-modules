@@ -317,14 +317,19 @@ run "admin_api_role_can_manage_users_and_read_roles" {
 run "auth_api_role_can_confirm_devices" {
   command = plan
 
+  # ConfirmDevice stays granted even though device_configuration is off
+  # again (see main.tf's comment on that block, doc/plan.md step 10a): the
+  # grant is dormant/harmless without the feature flag, and is exactly the
+  # foundation a future SRP-based fix would build on -- no reason to revert
+  # it alongside the feature flag itself.
   assert {
     condition     = strcontains(aws_iam_policy.auth_api[0].policy, "cognito-idp:ConfirmDevice")
     error_message = "auth_api's role should be able to confirm a new device (doc/plan.md step 10a)."
   }
 
   assert {
-    condition     = aws_cognito_user_pool.this.device_configuration[0].challenge_required_on_new_device == true
-    error_message = "device_configuration should be re-enabled now that DeviceKey is threaded through refresh (doc/plan.md step 10a)."
+    condition     = length(aws_cognito_user_pool.this.device_configuration) == 0
+    error_message = "device_configuration should stay disabled -- the Phase 1 spike (doc/plan.md step 10a) found a bare ConfirmDevice (no SRP verifier) insufficient for GetTokensFromRefreshToken."
   }
 }
 
