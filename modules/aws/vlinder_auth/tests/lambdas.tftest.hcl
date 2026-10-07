@@ -314,6 +314,20 @@ run "admin_api_role_can_manage_users_and_read_roles" {
   }
 }
 
+run "auth_api_role_can_confirm_devices" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, "cognito-idp:ConfirmDevice")
+    error_message = "auth_api's role should be able to confirm a new device (doc/plan.md step 10a)."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.this.device_configuration[0].challenge_required_on_new_device == true
+    error_message = "device_configuration should be re-enabled now that DeviceKey is threaded through refresh (doc/plan.md step 10a)."
+  }
+}
+
 run "all_lambda_roles_can_use_the_table_encryption_keys" {
   command = plan
 
