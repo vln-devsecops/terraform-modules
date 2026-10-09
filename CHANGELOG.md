@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.4](https://github.com/vln-devsecops/terraform-modules/compare/v1.2.3...v1.2.4) (2026-10-09)
+
+
+### Bug Fixes
+
+* **ci:** sync dependabot automerge workflow with guidance template ([#388](https://github.com/vln-devsecops/terraform-modules/issues/388)) ([c4e066f](https://github.com/vln-devsecops/terraform-modules/commit/c4e066f3446c5c025a79d6c531931f749abbceeb))
+
 ## [1.2.3](https://github.com/vln-devsecops/terraform-modules/compare/v1.2.2...v1.2.3) (2026-09-21)
 
 
