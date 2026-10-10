@@ -294,3 +294,22 @@ run "user_role_assignments_table_is_composed_from_the_shared_dynamodb_module" {
     error_message = "The user_role_assignments table should be provisioned via the shared aws/dynamodb module."
   }
 }
+
+run "elevated_grants_table_is_composed_from_the_shared_dynamodb_module_unconditionally" {
+  command = plan
+
+  # Unconditional -- not gated on local.create_public_auth_api the way
+  # verification_codes is -- because pre_token_generation always requires
+  # ELEVATED_GRANTS_TABLE_NAME regardless of auth_profile (it's wired to the
+  # Cognito user pool itself, not the public auth API). Checked here against
+  # the identity-only profile specifically, where create_public_auth_api is
+  # false, to prove the table still exists.
+  variables {
+    auth_profile = "identity_only"
+  }
+
+  assert {
+    condition     = length(module.elevated_grants.table_name) > 0
+    error_message = "The elevated_grants table should be provisioned via the shared aws/dynamodb module, even for the identity_only profile."
+  }
+}

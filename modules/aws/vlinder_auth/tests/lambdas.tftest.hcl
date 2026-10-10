@@ -261,9 +261,36 @@ run "pre_token_generation_env_vars_match_the_vendored_lambda_contract" {
   assert {
     condition = (
       one(aws_lambda_function.pre_token_generation.environment).variables["ROLE_ASSIGNMENTS_TABLE_NAME"] == module.user_role_assignments.table_name &&
-      one(aws_lambda_function.pre_token_generation.environment).variables["ROLES_TABLE_NAME"] == aws_dynamodb_table.roles.name
+      one(aws_lambda_function.pre_token_generation.environment).variables["ROLES_TABLE_NAME"] == aws_dynamodb_table.roles.name &&
+      one(aws_lambda_function.pre_token_generation.environment).variables["ELEVATED_GRANTS_TABLE_NAME"] == module.elevated_grants.table_name
     )
-    error_message = "pre_token_generation environment variables should match lambda-src's expected config keys."
+    error_message = "pre_token_generation environment variables should match lambda-src's expected config keys, including ELEVATED_GRANTS_TABLE_NAME for the step-up elevation bridge."
+  }
+}
+
+run "pre_token_generation_role_can_query_the_elevated_grants_bridge" {
+  command = plan
+
+  # The file-level aws_dynamodb_table mock gives every table the same
+  # placeholder ARN -- give elevated_grants a distinct one (same technique
+  # as tests/auth_api.tftest.hcl's whoami test) so this assertion actually
+  # means something.
+  override_resource {
+    target          = module.elevated_grants.aws_dynamodb_table.this
+    override_during = plan
+    values = {
+      arn = "arn:aws:dynamodb:us-east-1:123456789012:table/elevated-grants-distinct"
+    }
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.pre_token_generation.policy, module.elevated_grants.table_arn)
+    error_message = "pre_token_generation's role should be able to access the elevated_grants table to resolve step-up asks."
+  }
+
+  assert {
+    condition     = !strcontains(aws_iam_policy.pre_token_generation.policy, "dynamodb:PutItem") && !strcontains(aws_iam_policy.pre_token_generation.policy, "dynamodb:DeleteItem")
+    error_message = "pre_token_generation only ever reads the elevated_grants bridge -- it never writes or deletes a row itself."
   }
 }
 

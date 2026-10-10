@@ -613,6 +613,42 @@ module "user_role_assignments" {
   ]
 }
 
+# Step-up ("sudo") elevation bridge (doc/plan.md step 9 in node-vlinder-auth;
+# see doc/rationale.md's "Why elevation can't ride Cognito's ClientMetadata"
+# for the full history). The real entitlement lives in the refresh-token
+# JWE itself, not here -- this table is only a transient, just-in-time
+# mailbox: auth_api writes a row immediately before, and deletes it again
+# immediately after, the one GetTokensFromRefreshToken call that needs
+# pre_token_generation's trigger to see it, plus a per-userId advisory lock
+# row (sentinel privilege "__lock__") serializing that window across every
+# session. Unconditional (not gated on local.create_public_auth_api like
+# verification_codes below): pre_token_generation always requires
+# ELEVATED_GRANTS_TABLE_NAME regardless of auth_profile, since it's wired to
+# the Cognito user pool itself, not the public auth API.
+#
+# No kms_key_arn passed, so this gets its own dedicated CMK -- same
+# resource-isolation reasoning as module.user_role_assignments above, not
+# the tenants/roles tables' shared aws_kms_key.this: this table is written
+# by an unauthenticated-reachable code path (auth_api), so its KMS grant
+# shouldn't be entangled with the catalog tables' blast radius.
+module "elevated_grants" {
+  source = "../dynamodb"
+
+  app_name                    = var.app_name
+  deployment_environment      = var.deployment_environment
+  function                    = "auth-elevated-grants"
+  short_deployment_region     = local.short_region
+  deletion_protection_enabled = false
+  ttl_attribute               = "expiresAt"
+
+  attributes = [
+    { name = "userId", type = "S" },
+    { name = "privilege", type = "S" },
+  ]
+  hash_key  = "userId"
+  range_key = "privilege"
+}
+
 # --- npm-packaged Lambda functions ------------------------------------------
 #
 # Lambda source is consumed from @vln-devsecops/auth-lambda on GitHub Packages
@@ -861,18 +897,29 @@ resource "aws_iam_policy" "pre_token_generation" {
         Action   = ["dynamodb:GetItem"]
         Resource = [aws_dynamodb_table.roles.arn]
       },
+      # Step-up elevation bridge (see module.elevated_grants above): queried
+      # directly on every token mint, the same way role assignments are --
+      # a row existing is necessary but never sufficient, this Lambda
+      # re-validates every candidate against the caller's own fresh
+      # idTokenPrivileges before honoring anything.
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query"]
+        Resource = [module.elevated_grants.table_arn]
+      },
       # Every table this Lambda touches is encrypted with a customer-managed
       # CMK (roles/tenants + the Lambda's own env vars use aws_kms_key.this;
-      # role_assignments has its own dedicated key), and DynamoDB requires
-      # the *caller* to hold KMS permissions on the table's key -- table-arn
-      # grants alone produce a runtime kms:Decrypt AccessDeniedException on
-      # first invocation. GenerateDataKey is included even for read paths:
-      # DynamoDB's table-level data-key caching can trigger it on the
-      # caller's credentials regardless of the operation being a read.
+      # role_assignments and elevated_grants each have their own dedicated
+      # key), and DynamoDB requires the *caller* to hold KMS permissions on
+      # the table's key -- table-arn grants alone produce a runtime
+      # kms:Decrypt AccessDeniedException on first invocation.
+      # GenerateDataKey is included even for read paths: DynamoDB's
+      # table-level data-key caching can trigger it on the caller's
+      # credentials regardless of the operation being a read.
       {
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
-        Resource = [aws_kms_key.this.arn, module.user_role_assignments.kms_key_arn]
+        Resource = [aws_kms_key.this.arn, module.user_role_assignments.kms_key_arn, module.elevated_grants.kms_key_arn]
       },
     ]
   })
@@ -909,6 +956,7 @@ resource "aws_lambda_function" "pre_token_generation" {
       {
         ROLE_ASSIGNMENTS_TABLE_NAME = module.user_role_assignments.table_name
         ROLES_TABLE_NAME            = aws_dynamodb_table.roles.name
+        ELEVATED_GRANTS_TABLE_NAME  = module.elevated_grants.table_name
       },
       # Absent entirely (not set to an empty string) when there's no admin
       # panel -- the handler treats a missing ADMIN_API_RESOURCE as "no
@@ -1739,19 +1787,37 @@ resource "aws_iam_policy" "auth_api" {
         Action   = ["dynamodb:GetItem"]
         Resource = [aws_dynamodb_table.roles.arn]
       },
-      # This function's own environment variables are encrypted with
-      # aws_kms_key.this, same as every other Lambda in this module, and it
-      # also needs kms:Decrypt on the verification_codes table's own CMK
-      # (DynamoDB requires the *caller* to hold KMS permissions on the
-      # table's key -- see the matching statement on
-      # aws_iam_policy.pre_token_generation for the full rationale) plus the
-      # CMK-encrypted session-signing secret above. The tenants and roles
-      # tables share aws_kms_key.this, already covered; role_assignments has
-      # its own dedicated key.
+      # Step-up elevation bridge (see module.elevated_grants above):
+      # handlers/sudo.ts and handlers/password.ts's step-up re-mint, via
+      # tokenRotation.ts's mintTokensWithElevation, write a grant row and a
+      # per-userId advisory lock row (PutItem) immediately before, and
+      # delete both again (DeleteItem) immediately after, the one
+      # GetTokensFromRefreshToken call that needs pre_token_generation's
+      # trigger to see the grant. No GetItem/Query here -- auth_api never
+      # reads this table back, only writes-then-deletes.
       {
         Effect   = "Allow"
-        Action   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
-        Resource = [aws_kms_key.this.arn, one(module.verification_codes[*].kms_key_arn), module.user_role_assignments.kms_key_arn]
+        Action   = ["dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Resource = [module.elevated_grants.table_arn]
+      },
+      # This function's own environment variables are encrypted with
+      # aws_kms_key.this, same as every other Lambda in this module, and it
+      # also needs kms:Decrypt on the verification_codes and elevated_grants
+      # tables' own CMKs (DynamoDB requires the *caller* to hold KMS
+      # permissions on the table's key -- see the matching statement on
+      # aws_iam_policy.pre_token_generation for the full rationale) plus the
+      # CMK-encrypted session-signing secret above. The tenants and roles
+      # tables share aws_kms_key.this, already covered; role_assignments and
+      # elevated_grants each have their own dedicated key.
+      {
+        Effect = "Allow"
+        Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+        Resource = [
+          aws_kms_key.this.arn,
+          one(module.verification_codes[*].kms_key_arn),
+          module.user_role_assignments.kms_key_arn,
+          module.elevated_grants.kms_key_arn,
+        ]
       },
     ]
   })
@@ -1807,6 +1873,7 @@ resource "aws_lambda_function" "auth_api" {
       # not something that should silently come from whatever the Lambda
       # happens to default to.
       ELEVATED_GRANT_TTL_SECONDS     = "900"
+      ELEVATED_GRANTS_TABLE_NAME     = module.elevated_grants.table_name
       VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
       VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)
       VERIFICATION_CODE_MAX_ATTEMPTS = tostring(var.verification_code_max_attempts)
