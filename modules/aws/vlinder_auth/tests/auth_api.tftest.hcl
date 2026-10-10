@@ -501,3 +501,43 @@ run "auth_api_role_and_env_can_resolve_whoami_privileges" {
     error_message = "auth_api's role must never be granted Scan/PutItem/DeleteItem on the role_assignments or roles tables -- it only reads a specific user's own assignments and a specific role's own definition."
   }
 }
+
+run "auth_api_role_and_env_can_bridge_elevated_grants" {
+  command = plan
+
+  # Distinct ARN for the same reason as the whoami test above: the
+  # file-level mock gives every table the same placeholder ARN by default.
+  override_resource {
+    target          = module.elevated_grants.aws_dynamodb_table.this
+    override_during = plan
+    values = {
+      arn = "arn:aws:dynamodb:us-east-1:123456789012:table/elevated-grants-distinct"
+    }
+  }
+
+  assert {
+    condition     = one(aws_lambda_function.auth_api[0].environment).variables["ELEVATED_GRANTS_TABLE_NAME"] == module.elevated_grants.table_name
+    error_message = "auth_api's environment variables should carry ELEVATED_GRANTS_TABLE_NAME, matching lambda-src's tokenRotation.ts/sudo.ts/password.ts."
+  }
+
+  assert {
+    condition     = strcontains(aws_iam_policy.auth_api[0].policy, module.elevated_grants.table_arn)
+    error_message = "auth_api's role should be able to access the elevated_grants table to bridge a step-up ask to the trigger."
+  }
+
+  # auth_api only ever writes-then-deletes a grant row and the per-userId
+  # lock row (see tokenRotation.ts's mintTokensWithElevation) -- it never
+  # reads this table back, so Query/GetItem/Scan should never be granted on
+  # it, the mirror image of the whoami test's role_assignments/roles check
+  # above.
+  assert {
+    condition = alltrue([
+      for statement in jsondecode(aws_iam_policy.auth_api[0].policy).Statement :
+      !(
+        anytrue([for action in statement.Action : contains(["dynamodb:Query", "dynamodb:GetItem", "dynamodb:Scan"], action)]) &&
+        anytrue([for resource in statement.Resource : resource == module.elevated_grants.table_arn])
+      )
+    ])
+    error_message = "auth_api's role must never be granted Query/GetItem/Scan on the elevated_grants table -- it only ever writes then deletes a row, never reads one back."
+  }
+}
