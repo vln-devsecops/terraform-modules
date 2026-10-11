@@ -213,6 +213,17 @@ variable "verification_code_max_attempts" {
   default     = 5
 }
 
+variable "elevated_grant_ttl_seconds" {
+  description = "How long a step-up (/sudo, or password re-confirmation) elevated grant stays live before it decays back out, in seconds -- see lambda-src's doc/rationale.md (\"Elevated grants decay by wall-clock expiry\"). Defaults to a real-world-appropriate 900s (15 minutes); a demo/test deployment proving live expiry (e2e-vlinder-auth's sudo-elevation.feature) overrides this to the lowest value the Lambda itself accepts, to keep the live wait as short as possible. Bounds match lambda-src/auth-api/handler.ts's own requireIntEnv validation for this exact env var -- keep them in sync."
+  type        = number
+  default     = 900
+
+  validation {
+    condition     = var.elevated_grant_ttl_seconds >= 60 && var.elevated_grant_ttl_seconds <= 3600
+    error_message = "elevated_grant_ttl_seconds must be between 60 and 3600 seconds."
+  }
+}
+
 # --- RBAC and tenancy (optional; single-tenant default) --------------------
 
 variable "tenancy_mode" {
