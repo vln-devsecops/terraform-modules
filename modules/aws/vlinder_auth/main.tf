@@ -1867,12 +1867,13 @@ resource "aws_lambda_function" "auth_api" {
       # How long a /sudo step-up grant stays live before it decays back out
       # -- independent of REFRESH_TOKEN_TTL_SECONDS above, which governs the
       # wrapping JWE itself, not any one elevated grant riding inside it
-      # (see node-vlinder-auth's auth-api/handler.ts). Deliberately set
-      # explicitly rather than relying on that file's own fallback default:
-      # this value is a real product decision (how long a step-up lasts),
-      # not something that should silently come from whatever the Lambda
-      # happens to default to.
-      ELEVATED_GRANT_TTL_SECONDS     = "900"
+      # (see node-vlinder-auth's auth-api/handler.ts). Deliberately sourced
+      # from a real variable rather than a literal: this value is a real
+      # product decision (how long a step-up lasts), configurable per
+      # deployment -- see elevated_grant_ttl_seconds's own doc comment for
+      # why a demo/test deployment needs this shorter than the real-world
+      # default.
+      ELEVATED_GRANT_TTL_SECONDS     = tostring(var.elevated_grant_ttl_seconds)
       ELEVATED_GRANTS_TABLE_NAME     = module.elevated_grants.table_name
       VERIFICATION_CODES_TABLE_NAME  = one(module.verification_codes[*].table_name)
       VERIFICATION_CODE_TTL_SECONDS  = tostring(var.verification_code_ttl_seconds)

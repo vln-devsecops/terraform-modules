@@ -404,6 +404,19 @@ run "verification_code_ttl_and_max_attempts_overrides_are_plumbed_through" {
   }
 }
 
+run "elevated_grant_ttl_seconds_override_is_plumbed_through" {
+  command = plan
+
+  variables {
+    elevated_grant_ttl_seconds = 60
+  }
+
+  assert {
+    condition     = one(aws_lambda_function.auth_api[0].environment).variables["ELEVATED_GRANT_TTL_SECONDS"] == "60"
+    error_message = "elevated_grant_ttl_seconds override should reach auth_api's environment as a string -- see sudo-elevation.feature's expiry scenario, which needs this shortened to be provable live."
+  }
+}
+
 run "ses_configuration_is_required_whenever_the_public_auth_api_is_provisioned" {
   command = plan
 
